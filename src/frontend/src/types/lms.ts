@@ -1,0 +1,142 @@
+// Role types
+export type Role = "Admin" | "HOD" | "FSE";
+
+// User
+export interface User {
+  id: string;
+  username: string;
+  passwordHash: string; // btoa(password)
+  name: string;
+  email: string;
+  role: Role;
+  createdAt: string;
+}
+
+// Stage
+export interface Stage {
+  id: string;
+  name: string;
+  order: number;
+  color: string;
+}
+
+// Lead
+export interface Lead {
+  id: string;
+  title: string;
+  name: string;
+  email: string;
+  phone: string;
+  company: string;
+  source: string;
+  stageId: string;
+  assignedToHOD: string | null;
+  assignedToFSE: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Note
+export interface Note {
+  id: string;
+  leadId: string;
+  text: string;
+  authorId: string;
+  createdAt: string;
+}
+
+// FollowUp
+export interface FollowUp {
+  id: string;
+  leadId: string;
+  assignedTo: string;
+  scheduledAt: string;
+  description: string;
+  completed: boolean;
+  createdAt: string;
+}
+
+// localStorage keys
+export const LS_USERS = "lms_users";
+export const LS_SESSION = "lms_session";
+export const LS_STAGES = "lms_stages";
+export const LS_LEADS = "lms_leads";
+export const LS_NOTES = "lms_notes";
+export const LS_FOLLOWUPS = "lms_followups";
+
+// Session
+export interface Session {
+  userId: string;
+  role: Role;
+}
+
+// Lead sources
+export const LEAD_SOURCES = [
+  "Web",
+  "Referral",
+  "Social",
+  "Cold Call",
+  "Event",
+  "Other",
+] as const;
+export type LeadSource = (typeof LEAD_SOURCES)[number];
+
+// Default stages seed
+export const DEFAULT_STAGES: Stage[] = [
+  { id: "stage-1", name: "New", order: 1, color: "#3b82f6" },
+  { id: "stage-2", name: "Contacted", order: 2, color: "#f59e0b" },
+  { id: "stage-3", name: "Qualified", order: 3, color: "#8b5cf6" },
+  { id: "stage-4", name: "Proposal", order: 4, color: "#f97316" },
+  { id: "stage-5", name: "Negotiation", order: 5, color: "#06b6d4" },
+  { id: "stage-6", name: "Won", order: 6, color: "#10b981" },
+  { id: "stage-7", name: "Lost", order: 7, color: "#6b7280" },
+];
+
+// Role colors for badges
+export const ROLE_COLORS: Record<Role, string> = {
+  Admin: "bg-purple-500/15 text-purple-300 border-purple-500/30",
+  HOD: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+  FSE: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+};
+
+// Legacy support types (kept for compatibility with old components that may reference these)
+export type LeadStatus =
+  | "New"
+  | "Contacted"
+  | "Qualified"
+  | "Proposal"
+  | "Won"
+  | "Lost";
+export const LEAD_STATUSES: LeadStatus[] = [
+  "New",
+  "Contacted",
+  "Qualified",
+  "Proposal",
+  "Won",
+  "Lost",
+];
+export const STATUS_COLORS: Record<LeadStatus, string> = {
+  New: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+  Contacted: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  Qualified: "bg-purple-500/15 text-purple-300 border-purple-500/30",
+  Proposal: "bg-orange-500/15 text-orange-300 border-orange-500/30",
+  Won: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  Lost: "bg-slate-500/15 text-slate-400 border-slate-500/30",
+};
+export const STATUS_DOT_COLORS: Record<LeadStatus, string> = {
+  New: "bg-blue-400",
+  Contacted: "bg-amber-400",
+  Qualified: "bg-purple-400",
+  Proposal: "bg-orange-400",
+  Won: "bg-emerald-400",
+  Lost: "bg-slate-400",
+};
+export const SOURCE_COLORS: Record<string, string> = {
+  Web: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
+  Referral: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30",
+  Social: "bg-pink-500/15 text-pink-300 border-pink-500/30",
+  "Cold Call": "bg-yellow-500/15 text-yellow-300 border-yellow-500/30",
+  Event: "bg-teal-500/15 text-teal-300 border-teal-500/30",
+  Other: "bg-slate-500/15 text-slate-400 border-slate-500/30",
+};

@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "Cabinet Grotesk";
+  src: url("/assets/fonts/CabinetGrotesk-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Satoshi";
+  src: url("/assets/fonts/Satoshi-Variable.woff2") format("woff2");
+  font-weight: 300 900;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+
+    /* Dark CRM theme — deep slate with teal accents */
+    --background: 0.14 0.01 260;
+    --foreground: 0.93 0.01 260;
+
+    --card: 0.17 0.015 260;
+    --card-foreground: 0.93 0.01 260;
+
+    --popover: 0.2 0.015 260;
+    --popover-foreground: 0.93 0.01 260;
+
+    --primary: 0.72 0.19 195;
+    --primary-foreground: 0.1 0.01 260;
+
+    --secondary: 0.22 0.02 260;
+    --secondary-foreground: 0.85 0.01 260;
+
+    --muted: 0.2 0.015 260;
+    --muted-foreground: 0.55 0.02 260;
+
+    --accent: 0.72 0.19 195;
+    --accent-foreground: 0.1 0.01 260;
+
+    --destructive: 0.6 0.22 25;
+    --destructive-foreground: 0.98 0 0;
+
+    --border: 0.26 0.02 260;
+    --input: 0.26 0.02 260;
+    --ring: 0.72 0.19 195;
+
+    /* Status colors */
+    --status-new: 0.62 0.18 240;
+    --status-contacted: 0.75 0.15 80;
+    --status-qualified: 0.65 0.2 300;
+    --status-proposal: 0.7 0.18 40;
+    --status-won: 0.68 0.18 145;
+    --status-lost: 0.5 0.1 260;
+
+    /* Chart colors */
+    --chart-1: 0.72 0.19 195;
+    --chart-2: 0.65 0.2 300;
+    --chart-3: 0.68 0.18 145;
+    --chart-4: 0.75 0.15 80;
+    --chart-5: 0.6 0.22 25;
+
+    /* Sidebar */
+    --sidebar: 0.12 0.015 260;
+    --sidebar-foreground: 0.85 0.01 260;
+    --sidebar-primary: 0.72 0.19 195;
+    --sidebar-primary-foreground: 0.1 0.01 260;
+    --sidebar-accent: 0.19 0.02 260;
+    --sidebar-accent-foreground: 0.93 0.01 260;
+    --sidebar-border: 0.22 0.02 260;
+    --sidebar-ring: 0.72 0.19 195;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Satoshi", sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Cabinet Grotesk", sans-serif;
+    font-weight: 700;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: oklch(var(--background));
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(var(--border));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(var(--muted-foreground));
+}
+
+/* Kanban drag styles */
+.drag-over {
+  outline: 2px dashed oklch(var(--primary));
+  outline-offset: -2px;
+}
+
+.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}

@@ -1,0 +1,169 @@
+import { Toaster } from "@/components/ui/sonner";
+import {
+  Outlet,
+  RouterProvider,
+  createRootRoute,
+  createRoute,
+  createRouter,
+} from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { Layout } from "./components/Layout";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import { LMSProvider } from "./context/LMSContext";
+import { LoginPage } from "./pages/LoginPage";
+import { AdminDashboard } from "./pages/admin/AdminDashboard";
+import { AdminLeads } from "./pages/admin/AdminLeads";
+import { StageManagement } from "./pages/admin/StageManagement";
+import { UserManagement } from "./pages/admin/UserManagement";
+import { FSEDashboard } from "./pages/fse/FSEDashboard";
+import { FollowUpsPage } from "./pages/fse/FollowUpsPage";
+import { HODDashboard } from "./pages/hod/HODDashboard";
+import { HODTeam } from "./pages/hod/HODTeam";
+import { seedData } from "./utils/storage";
+
+// Seed data on load
+seedData();
+
+function RoleRedirect() {
+  const { currentUser } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!currentUser) return;
+    if (currentUser.role === "Admin") {
+      navigate({ to: "/admin" });
+    } else if (currentUser.role === "HOD") {
+      navigate({ to: "/hod" });
+    } else {
+      navigate({ to: "/fse" });
+    }
+  }, [currentUser, navigate]);
+
+  return null;
+}
+
+function AuthWrapper() {
+  const { currentUser } = useAuth();
+
+  if (!currentUser) {
+    return <LoginPage />;
+  }
+
+  return (
+    <LMSProvider>
+      <Layout>
+        <Outlet />
+      </Layout>
+    </LMSProvider>
+  );
+}
+
+// Root route
+const rootRoute = createRootRoute({
+  component: () => (
+    <AuthProvider>
+      <AuthWrapper />
+      <Toaster
+        position="bottom-right"
+        toastOptions={{
+          style: {
+            background: "oklch(0.2 0.015 260)",
+            border: "1px solid oklch(0.26 0.02 260)",
+            color: "oklch(0.93 0.01 260)",
+          },
+        }}
+      />
+    </AuthProvider>
+  ),
+});
+
+// Index route — redirect based on role
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
+  component: RoleRedirect,
+});
+
+// Login route
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/login",
+  component: LoginPage,
+});
+
+// Admin routes
+const adminRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin",
+  component: AdminDashboard,
+});
+
+const adminUsersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/users",
+  component: UserManagement,
+});
+
+const adminStagesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/stages",
+  component: StageManagement,
+});
+
+const adminLeadsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/leads",
+  component: AdminLeads,
+});
+
+// HOD routes
+const hodRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/hod",
+  component: HODDashboard,
+});
+
+const hodTeamRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/hod/team",
+  component: HODTeam,
+});
+
+// FSE routes
+const fseRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/fse",
+  component: FSEDashboard,
+});
+
+const fseFollowUpsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/fse/followups",
+  component: FollowUpsPage,
+});
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  loginRoute,
+  adminRoute,
+  adminUsersRoute,
+  adminStagesRoute,
+  adminLeadsRoute,
+  hodRoute,
+  hodTeamRoute,
+  fseRoute,
+  fseFollowUpsRoute,
+]);
+
+const router = createRouter({ routeTree });
+
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+}
+
+export default function App() {
+  return <RouterProvider router={router} />;
+}
