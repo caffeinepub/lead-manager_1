@@ -5,13 +5,23 @@ import {
   useContext,
   useState,
 } from "react";
-import type { FollowUp, Lead, Note, Stage, User } from "../types/lms";
+import type {
+  DayLocation,
+  DayLog,
+  FollowUp,
+  Lead,
+  Note,
+  Stage,
+  User,
+} from "../types/lms";
 import {
+  getDayLogs,
   getFollowUps,
   getLeads,
   getNotes,
   getStages,
   getUsers,
+  saveDayLogs,
   saveFollowUps,
   saveLeads,
   saveNotes,
@@ -62,6 +72,18 @@ interface LMSContextType {
   deleteFollowUp: (id: string) => void;
   getFSEFollowUps: (fseId: string) => FollowUp[];
   getLeadFollowUps: (leadId: string) => FollowUp[];
+
+  // Day Logs
+  dayLogs: DayLog[];
+  startDay: (
+    userId: string,
+    role: DayLog["role"],
+    location: DayLocation | null,
+  ) => DayLog;
+  endDay: (logId: string, location: DayLocation | null) => void;
+  getTodayLog: (userId: string) => DayLog | undefined;
+  getDayLogsForUser: (userId: string) => DayLog[];
+  getDayLogsForDate: (date: string) => DayLog[];
 }
 
 const LMSContext = createContext<LMSContextType | undefined>(undefined);
@@ -74,6 +96,7 @@ export function LMSProvider({ children }: { children: ReactNode }) {
   const [followUps, setFollowUpsState] = useState<FollowUp[]>(() =>
     getFollowUps(),
   );
+  const [dayLogs, setDayLogsState] = useState<DayLog[]>(() => getDayLogs());
 
   // --- Sync helpers ---
   const setUsers = useCallback(
@@ -125,6 +148,17 @@ export function LMSProvider({ children }: { children: ReactNode }) {
       setFollowUpsState((prev) => {
         const next = typeof updater === "function" ? updater(prev) : updater;
         saveFollowUps(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const setDayLogs = useCallback(
+    (updater: DayLog[] | ((prev: DayLog[]) => DayLog[])) => {
+      setDayLogsState((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        saveDayLogs(next);
         return next;
       });
     },
@@ -362,6 +396,73 @@ export function LMSProvider({ children }: { children: ReactNode }) {
     [followUps],
   );
 
+  // --- Day Logs ---
+  const startDay = useCallback(
+    (
+      userId: string,
+      role: DayLog["role"],
+      location: DayLocation | null,
+    ): DayLog => {
+      const newLog: DayLog = {
+        id: crypto.randomUUID(),
+        userId,
+        role,
+        date: new Date().toISOString().slice(0, 10),
+        dayStartTime: new Date().toISOString(),
+        dayStartLocation: location,
+        dayEndTime: null,
+        dayEndLocation: null,
+        createdAt: new Date().toISOString(),
+      };
+      setDayLogs((prev) => [newLog, ...prev]);
+      return newLog;
+    },
+    [setDayLogs],
+  );
+
+  const endDay = useCallback(
+    (logId: string, location: DayLocation | null) => {
+      setDayLogs((prev) =>
+        prev.map((l) =>
+          l.id === logId
+            ? {
+                ...l,
+                dayEndTime: new Date().toISOString(),
+                dayEndLocation: location,
+              }
+            : l,
+        ),
+      );
+    },
+    [setDayLogs],
+  );
+
+  const getTodayLog = useCallback(
+    (userId: string): DayLog | undefined => {
+      const today = new Date().toISOString().slice(0, 10);
+      return dayLogs.find((l) => l.userId === userId && l.date === today);
+    },
+    [dayLogs],
+  );
+
+  const getDayLogsForUser = useCallback(
+    (userId: string): DayLog[] => {
+      return dayLogs
+        .filter((l) => l.userId === userId)
+        .sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+        );
+    },
+    [dayLogs],
+  );
+
+  const getDayLogsForDate = useCallback(
+    (date: string): DayLog[] => {
+      return dayLogs.filter((l) => l.date === date);
+    },
+    [dayLogs],
+  );
+
   const value: LMSContextType = {
     users,
     addUser,
@@ -387,6 +488,12 @@ export function LMSProvider({ children }: { children: ReactNode }) {
     deleteFollowUp,
     getFSEFollowUps,
     getLeadFollowUps,
+    dayLogs,
+    startDay,
+    endDay,
+    getTodayLog,
+    getDayLogsForUser,
+    getDayLogsForDate,
   };
 
   return <LMSContext.Provider value={value}>{children}</LMSContext.Provider>;

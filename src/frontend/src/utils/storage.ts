@@ -1,7 +1,16 @@
-import type { FollowUp, Lead, Note, Session, Stage, User } from "../types/lms";
+import type {
+  DayLog,
+  FollowUp,
+  Lead,
+  Note,
+  Session,
+  Stage,
+  User,
+} from "../types/lms";
 import {
   DEFAULT_STAGES,
   LEAD_SOURCES,
+  LS_DAYLOGS,
   LS_FOLLOWUPS,
   LS_LEADS,
   LS_NOTES,
@@ -267,4 +276,13 @@ export function getFollowUps(): FollowUp[] {
 
 export function saveFollowUps(followUps: FollowUp[]): void {
   save(LS_FOLLOWUPS, followUps);
+}
+
+// --- DayLogs ---
+export function getDayLogs(): DayLog[] {
+  return load<DayLog[]>(LS_DAYLOGS) ?? [];
+}
+
+export function saveDayLogs(dayLogs: DayLog[]): void {
+  save(LS_DAYLOGS, dayLogs);
 }

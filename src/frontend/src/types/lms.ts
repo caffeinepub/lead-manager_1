@@ -61,6 +61,25 @@ export interface FollowUp {
   createdAt: string;
 }
 
+// DayLog
+export interface DayLocation {
+  lat: number;
+  lng: number;
+  address: string;
+}
+
+export interface DayLog {
+  id: string;
+  userId: string;
+  role: Role;
+  date: string; // YYYY-MM-DD
+  dayStartTime: string; // ISO datetime
+  dayStartLocation: DayLocation | null;
+  dayEndTime: string | null; // ISO datetime or null if day not ended
+  dayEndLocation: DayLocation | null;
+  createdAt: string;
+}
+
 // localStorage keys
 export const LS_USERS = "lms_users";
 export const LS_SESSION = "lms_session";
@@ -68,6 +87,7 @@ export const LS_STAGES = "lms_stages";
 export const LS_LEADS = "lms_leads";
 export const LS_NOTES = "lms_notes";
 export const LS_FOLLOWUPS = "lms_followups";
+export const LS_DAYLOGS = "lms_daylogs";
 
 // Session
 export interface Session {

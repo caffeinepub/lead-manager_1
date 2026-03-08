@@ -36,6 +36,7 @@ import {
   AddLeadDialog,
   type LeadFormInput,
 } from "../../components/AddLeadDialog";
+import { DayTracker } from "../../components/DayTracker";
 import { LeadUploadDialog } from "../../components/LeadUploadDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useLMS } from "../../context/LMSContext";
@@ -237,6 +238,11 @@ export function FSEDashboard() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto animate-fade-in">
+      {/* Day Tracker Banner */}
+      {currentUser && (
+        <DayTracker userId={currentUser.id} role={currentUser.role} />
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-display text-2xl font-bold text-foreground">

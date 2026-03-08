@@ -15,6 +15,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -23,6 +24,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -30,6 +39,7 @@ import {
   Calendar,
   CheckCircle,
   ChevronDown,
+  ClipboardList,
   Clock,
   Download,
   MapPin,
@@ -53,6 +63,7 @@ import { LeadUploadDialog } from "../../components/LeadUploadDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useLMS } from "../../context/LMSContext";
 import type { Lead } from "../../types/lms";
+import { ROLE_COLORS } from "../../types/lms";
 import { exportLeadsToCSV } from "../../utils/exportLeads";
 
 function formatDate(iso: string) {
@@ -116,6 +127,16 @@ function formatDateTime(iso: string) {
   });
 }
 
+function formatDayDateTime(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -141,6 +162,7 @@ export function HODDashboard() {
     addNote,
     getLeadFollowUps,
     updateFollowUp,
+    getDayLogsForDate,
   } = useLMS();
 
   // HOD only sees leads assigned to them
@@ -162,6 +184,10 @@ export function HODDashboard() {
 
   // Selection state for download
   const [hodSelectedIds, setHodSelectedIds] = useState<Set<string>>(new Set());
+
+  // Day reports state
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [reportDate, setReportDate] = useState(todayStr);
 
   const stats = useMemo(() => {
     const total = myLeads.length;
@@ -200,6 +226,23 @@ export function HODDashboard() {
     updateFollowUp(id, { completed });
     toast.success(completed ? "Marked as complete" : "Marked as pending");
   };
+
+  // Day reports: FSEs assigned to leads under this HOD
+  const hodFseIds = useMemo(
+    () =>
+      new Set(myLeads.map((l) => l.assignedToFSE).filter(Boolean) as string[]),
+    [myLeads],
+  );
+
+  const hodFseUsers = useMemo(
+    () => users.filter((u) => u.role === "FSE" && hodFseIds.has(u.id)),
+    [users, hodFseIds],
+  );
+
+  const hodReportLogs = useMemo(
+    () => getDayLogsForDate(reportDate),
+    [getDayLogsForDate, reportDate],
+  );
 
   // Unified FSE activity feed: all notes + follow-ups for my leads, sorted by createdAt desc
   const activityFeed = useMemo(() => {
@@ -478,6 +521,14 @@ export function HODDashboard() {
                 {hodPending}
               </span>
             )}
+          </TabsTrigger>
+          <TabsTrigger
+            value="dayreports"
+            className="flex items-center gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            data-ocid="hod.tabs.dayreports.tab"
+          >
+            <ClipboardList className="w-3.5 h-3.5" />
+            Day Reports
           </TabsTrigger>
         </TabsList>
 
@@ -972,6 +1023,186 @@ export function HODDashboard() {
                   );
                 },
               )}
+            </div>
+          )}
+        </TabsContent>
+        {/* ── Day Reports Tab ── */}
+        <TabsContent value="dayreports">
+          <div className="flex items-center gap-3 mb-5">
+            <label
+              htmlFor="hod-report-date"
+              className="text-sm font-medium text-foreground whitespace-nowrap"
+            >
+              Select Date:
+            </label>
+            <Input
+              id="hod-report-date"
+              type="date"
+              value={reportDate}
+              onChange={(e) => setReportDate(e.target.value)}
+              className="bg-secondary border-border max-w-[180px]"
+              data-ocid="hod.dayreports.date_input"
+            />
+            <span className="text-xs text-muted-foreground">
+              {new Date(`${reportDate}T00:00:00`).toLocaleDateString("en-US", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </span>
+          </div>
+
+          {hodFseUsers.length === 0 ? (
+            <div
+              data-ocid="hod.dayreports.empty_state"
+              className="text-center py-16 text-muted-foreground"
+            >
+              <ClipboardList className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium">
+                No FSEs assigned to your leads
+              </p>
+              <p className="text-xs mt-1">
+                Assign FSEs to your leads to see their day reports
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border bg-card shadow-card overflow-hidden">
+              <Table data-ocid="hod.dayreports.table">
+                <TableHeader>
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableHead className="text-muted-foreground font-medium pl-4">
+                      FSE Name
+                    </TableHead>
+                    <TableHead className="text-muted-foreground font-medium">
+                      Role
+                    </TableHead>
+                    <TableHead className="text-muted-foreground font-medium">
+                      Day Start
+                    </TableHead>
+                    <TableHead className="text-muted-foreground font-medium hidden md:table-cell">
+                      Start Location
+                    </TableHead>
+                    <TableHead className="text-muted-foreground font-medium">
+                      Day End
+                    </TableHead>
+                    <TableHead className="text-muted-foreground font-medium hidden md:table-cell">
+                      End Location
+                    </TableHead>
+                    <TableHead className="text-muted-foreground font-medium">
+                      Status
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {hodFseUsers.map((user, idx) => {
+                    const log = hodReportLogs.find((l) => l.userId === user.id);
+                    const status = log
+                      ? log.dayEndTime
+                        ? "Completed"
+                        : "In Progress"
+                      : "Not Started";
+
+                    return (
+                      <motion.tr
+                        key={user.id}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: idx * 0.03 }}
+                        data-ocid={`hod.dayreports.row.${idx + 1}`}
+                        className="border-border hover:bg-secondary/20 transition-colors"
+                      >
+                        <TableCell className="pl-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                              <span className="text-[10px] font-bold text-emerald-400">
+                                {user.name.charAt(0)}
+                              </span>
+                            </div>
+                            <span className="font-medium text-foreground text-sm">
+                              {user.name}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] ${ROLE_COLORS[user.role]}`}
+                          >
+                            {user.role}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {log ? (
+                            <div className="flex items-center gap-1 text-xs text-foreground/80">
+                              <Clock className="w-3 h-3 text-emerald-400 shrink-0" />
+                              {formatDayDateTime(log.dayStartTime)}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/50">
+                              —
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          {log?.dayStartLocation ? (
+                            <div className="flex items-start gap-1 text-xs text-muted-foreground max-w-[200px]">
+                              <MapPin className="w-3 h-3 shrink-0 mt-0.5 text-emerald-400" />
+                              <span className="line-clamp-2">
+                                {log.dayStartLocation.address}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/40">
+                              —
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {log?.dayEndTime ? (
+                            <div className="flex items-center gap-1 text-xs text-foreground/80">
+                              <Clock className="w-3 h-3 text-rose-400 shrink-0" />
+                              {formatDayDateTime(log.dayEndTime)}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/50">
+                              —
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          {log?.dayEndLocation ? (
+                            <div className="flex items-start gap-1 text-xs text-muted-foreground max-w-[200px]">
+                              <MapPin className="w-3 h-3 shrink-0 mt-0.5 text-rose-400" />
+                              <span className="line-clamp-2">
+                                {log.dayEndLocation.address}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/40">
+                              —
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={
+                              status === "Completed"
+                                ? "text-[10px] bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                                : status === "In Progress"
+                                  ? "text-[10px] bg-amber-500/15 text-amber-300 border-amber-500/30"
+                                  : "text-[10px] bg-secondary text-muted-foreground border-border"
+                            }
+                          >
+                            {status}
+                          </Badge>
+                        </TableCell>
+                      </motion.tr>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           )}
         </TabsContent>

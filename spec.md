@@ -1,32 +1,38 @@
 # Lead Manager
 
 ## Current State
-
-Full-featured Lead Management System with role-based access (Admin, HOD, FSE, TeleCaller, THOD). Data is stored in localStorage. The FSE role has a dedicated "Follow-ups" page (`/fse/followups`) with date-wise grouping (Overdue, Today, Tomorrow, This Week, Later) and mark-complete functionality. The HOD dashboard has two tabs: "My Leads" and "FSE Activity" but no follow-up tab for HOD's own scheduled follow-ups.
+- Full role-based LMS with Admin, HOD, FSE, TeleCaller, THOD roles
+- TeleCaller and FSE have dedicated dashboards for lead management
+- Admin, HOD, THOD dashboards have tabs for overview, follow-ups, and activity
+- All data stored in localStorage via LMSContext and storage utilities
 
 ## Requested Changes (Diff)
 
 ### Add
-- A third tab "Follow-ups" to the HOD Dashboard showing all follow-ups for leads assigned to that HOD, grouped by date (same grouping logic as the FSE FollowUpsPage: Overdue, Today, Tomorrow, This Week, Later)
-- Each follow-up item shows: lead name, description, scheduled time, and a mark-complete toggle/checkbox
-- Summary stats (pending count, completed count) at the top of the HOD follow-ups tab
+- **DayLog type** in `types/lms.ts`: captures userId, role, date, dayStartTime, dayStartLocation (lat/lng/address), dayEndTime, dayEndLocation, notes
+- **LS_DAYLOGS localStorage key** in `types/lms.ts`
+- **getDayLogs / saveDayLogs** in `storage.ts`
+- **DayLog context** in `LMSContext`: addDayLog, updateDayLog, getDayLogsForUser, getTodayLog
+- **Day Start / Day End banner** in TeleCallerDashboard and FSEDashboard: sticky top-of-page panel showing current day status; "Start Day" captures geolocation + timestamp; "End Day" captures geolocation + timestamp; shows elapsed time while day is active
+- **"Day Reports" tab** in AdminDashboard, HODDashboard, THODDashboard: shows list of all TeleCaller/FSE users visible to that role, with today's day log (started at, ended at, location); date filter to browse historical days; expandable rows showing start/end location details
 
 ### Modify
-- HOD Dashboard: add a third `TabsTrigger` and `TabsContent` for "Follow-ups" with a count badge
-- HOD follow-ups should include all follow-ups on leads that `assignedToHOD === currentUser.id`, not just by `assignedTo` user
+- `AdminDashboard.tsx`: add a "Day Reports" tab alongside existing tabs
+- `HODDashboard.tsx`: add a "Day Reports" tab (shows FSEs assigned under HOD's leads)
+- `THODDashboard.tsx`: add a "Day Reports" tab (shows all TeleCaller/FSE users system-wide)
+- `TeleCallerDashboard.tsx`: add Day Start/End panel at the top
+- `FSEDashboard.tsx`: add Day Start/End panel at the top
+- `LMSContext.tsx`: add dayLogs state and CRUD helpers
+- `storage.ts`: add dayLogs persistence helpers
+- `types/lms.ts`: add DayLog interface and LS_DAYLOGS constant
 
 ### Remove
 - Nothing
 
 ## Implementation Plan
-
-1. In `HODDashboard.tsx`:
-   - Import `updateFollowUp` from LMSContext
-   - Derive `hodFollowUps`: all followUps where `leads.find(l => l.id === f.leadId)?.assignedToHOD === currentUser.id`, sorted by scheduledAt ascending
-   - Compute `hodPending` and `hodCompleted` counts
-   - Add a third tab trigger "Follow-ups" with a count badge (pending count)
-   - Add a third TabsContent with:
-     - Two summary stat cards (Pending, Completed) matching the FSE FollowUpsPage style
-     - Empty state if no follow-ups
-     - Date-grouped list using the same GROUP_ORDER and GROUP_COLORS as FollowUpsPage
-     - Each item: lead name, description, scheduled time, checkbox to mark complete
+1. Add DayLog interface + LS_DAYLOGS to `types/lms.ts`
+2. Add getDayLogs/saveDayLogs to `storage.ts`
+3. Add dayLogs state, addDayLog, updateDayLog, getDayLogsForUser, getTodayLog to `LMSContext.tsx`
+4. Create DayTracker component (shared banner for TC/FSE) with geolocation + start/end logic
+5. Add DayTracker to TeleCallerDashboard and FSEDashboard
+6. Add "Day Reports" tab to AdminDashboard, HODDashboard, THODDashboard showing date-filterable table of day logs per user
