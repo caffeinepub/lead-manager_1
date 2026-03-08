@@ -16,10 +16,15 @@ import {
 
 interface AuthContextType {
   currentUser: User | null;
-  login: (username: string, password: string) => boolean;
+  login: (
+    username: string,
+    password: string,
+  ) => { success: boolean; error?: string };
   logout: () => void;
   refreshCurrentUser: () => void;
   changePassword: (currentPassword: string, newPassword: string) => boolean;
+  setFirstLoginPassword: (newPassword: string) => boolean;
+  requiresPasswordReset: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,14 +41,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     resolveCurrentUser(),
   );
 
-  const login = useCallback((username: string, password: string): boolean => {
-    const user = getUserByUsername(username);
-    if (!user) return false;
-    if (user.passwordHash !== btoa(password)) return false;
-    setSession({ userId: user.id, role: user.role as Role });
-    setCurrentUser(user);
-    return true;
-  }, []);
+  const login = useCallback(
+    (
+      username: string,
+      password: string,
+    ): { success: boolean; error?: string } => {
+      const user = getUserByUsername(username);
+      if (!user)
+        return { success: false, error: "Invalid username or password" };
+      if (user.passwordHash !== btoa(password))
+        return { success: false, error: "Invalid username or password" };
+      // Check user status
+      const status = user.status ?? "active";
+      if (status === "pending")
+        return { success: false, error: "Account pending admin approval" };
+      if (status === "rejected")
+        return { success: false, error: "Account rejected by admin" };
+      setSession({ userId: user.id, role: user.role as Role });
+      setCurrentUser(user);
+      return { success: true };
+    },
+    [],
+  );
 
   const logout = useCallback(() => {
     setSession(null);
@@ -71,12 +90,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const setFirstLoginPassword = useCallback((newPassword: string): boolean => {
+    const session = getSession();
+    if (!session) return false;
+    const users = getUsers();
+    const userIdx = users.findIndex((u) => u.id === session.userId);
+    if (userIdx === -1) return false;
+    users[userIdx] = {
+      ...users[userIdx],
+      passwordHash: btoa(newPassword),
+      firstLogin: false,
+    };
+    saveUsers(users);
+    setCurrentUser(resolveCurrentUser());
+    return true;
+  }, []);
+
+  const requiresPasswordReset = currentUser?.firstLogin === true;
+
   const contextValue: AuthContextType = {
     currentUser,
     login,
     logout,
     refreshCurrentUser,
     changePassword,
+    setFirstLoginPassword,
+    requiresPasswordReset,
   };
 
   return (

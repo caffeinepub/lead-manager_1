@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -49,6 +50,8 @@ interface UserFormData {
   email: string;
   password: string;
   role: Role;
+  assignedHODs: string[];
+  assignedTHODs: string[];
 }
 
 const defaultForm: UserFormData = {
@@ -57,6 +60,8 @@ const defaultForm: UserFormData = {
   email: "",
   password: "",
   role: "FSE",
+  assignedHODs: [],
+  assignedTHODs: [],
 };
 
 function formatDate(iso: string) {
@@ -70,10 +75,38 @@ function formatDate(iso: string) {
 export function UserManagement() {
   const { currentUser } = useAuth();
   const { users, addUser, updateUser, deleteUser } = useLMS();
+
+  const hodUsers = users.filter(
+    (u) => u.role === "HOD" && (u.status ?? "active") === "active",
+  );
+  const thodUsers = users.filter(
+    (u) => u.role === "THOD" && (u.status ?? "active") === "active",
+  );
+
   const [addOpen, setAddOpen] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   const [form, setForm] = useState<UserFormData>(defaultForm);
+
+  const toggleAssignedHOD = (hodId: string) => {
+    setForm((prev) => {
+      const current = prev.assignedHODs;
+      const next = current.includes(hodId)
+        ? current.filter((id) => id !== hodId)
+        : [...current, hodId];
+      return { ...prev, assignedHODs: next };
+    });
+  };
+
+  const toggleAssignedTHOD = (thodId: string) => {
+    setForm((prev) => {
+      const current = prev.assignedTHODs;
+      const next = current.includes(thodId)
+        ? current.filter((id) => id !== thodId)
+        : [...current, thodId];
+      return { ...prev, assignedTHODs: next };
+    });
+  };
 
   const openAdd = () => {
     setForm(defaultForm);
@@ -88,6 +121,8 @@ export function UserManagement() {
       email: user.email,
       password: "",
       role: user.role,
+      assignedHODs: user.assignedHODs ?? [],
+      assignedTHODs: user.assignedTHODs ?? [],
     });
     setEditUser(user);
     setAddOpen(true);
@@ -112,6 +147,8 @@ export function UserManagement() {
         name: form.name.trim(),
         email: form.email.trim(),
         role: form.role,
+        assignedHODs: form.role === "FSE" ? form.assignedHODs : [],
+        assignedTHODs: form.role === "TeleCaller" ? form.assignedTHODs : [],
       };
       if (form.password.trim()) {
         updates.passwordHash = btoa(form.password.trim());
@@ -129,6 +166,8 @@ export function UserManagement() {
         email: form.email.trim(),
         passwordHash: btoa(form.password.trim()),
         role: form.role,
+        assignedHODs: form.role === "FSE" ? form.assignedHODs : [],
+        assignedTHODs: form.role === "TeleCaller" ? form.assignedTHODs : [],
       });
       toast.success("User added");
     }
@@ -190,6 +229,9 @@ export function UserManagement() {
               <TableHead className="text-muted-foreground font-medium">
                 Role
               </TableHead>
+              <TableHead className="text-muted-foreground font-medium hidden md:table-cell">
+                Status
+              </TableHead>
               <TableHead className="text-muted-foreground font-medium hidden lg:table-cell">
                 Created
               </TableHead>
@@ -201,7 +243,7 @@ export function UserManagement() {
           <TableBody>
             {displayUsers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-12">
+                <TableCell colSpan={7} className="text-center py-12">
                   <div
                     data-ocid="users.empty_state"
                     className="text-muted-foreground flex flex-col items-center gap-2"
@@ -249,6 +291,20 @@ export function UserManagement() {
                       )}
                     >
                       {user.role}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <Badge
+                      variant="outline"
+                      className={
+                        (user.status ?? "active") === "active"
+                          ? "text-[10px] bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                          : (user.status ?? "active") === "pending"
+                            ? "text-[10px] bg-amber-500/15 text-amber-300 border-amber-500/30"
+                            : "text-[10px] bg-rose-500/15 text-rose-300 border-rose-500/30"
+                      }
+                    >
+                      {user.status ?? "active"}
                     </Badge>
                   </TableCell>
                   <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
@@ -343,7 +399,12 @@ export function UserManagement() {
                 <Select
                   value={form.role}
                   onValueChange={(v) =>
-                    setForm((p) => ({ ...p, role: v as Role }))
+                    setForm((p) => ({
+                      ...p,
+                      role: v as Role,
+                      assignedHODs: [],
+                      assignedTHODs: [],
+                    }))
                   }
                 >
                   <SelectTrigger
@@ -408,6 +469,67 @@ export function UserManagement() {
                 />
               </div>
             </div>
+
+            {/* Assign to HOD(s) — shown only when role is FSE */}
+            {form.role === "FSE" && hodUsers.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground block">
+                  Assign to HOD(s)
+                </Label>
+                <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2 max-h-36 overflow-y-auto">
+                  {hodUsers.map((hod) => (
+                    <div key={hod.id} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`hod-${hod.id}`}
+                        checked={form.assignedHODs.includes(hod.id)}
+                        onCheckedChange={() => toggleAssignedHOD(hod.id)}
+                        data-ocid="users.assign_hod.checkbox"
+                      />
+                      <label
+                        htmlFor={`hod-${hod.id}`}
+                        className="text-sm text-foreground cursor-pointer select-none"
+                      >
+                        {hod.name}
+                        <span className="ml-1.5 text-xs text-muted-foreground">
+                          @{hod.username}
+                        </span>
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Assign to THOD(s) — shown only when role is TeleCaller */}
+            {form.role === "TeleCaller" && thodUsers.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground block">
+                  Assign to THOD(s)
+                </Label>
+                <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2 max-h-36 overflow-y-auto">
+                  {thodUsers.map((thod) => (
+                    <div key={thod.id} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`thod-${thod.id}`}
+                        checked={form.assignedTHODs.includes(thod.id)}
+                        onCheckedChange={() => toggleAssignedTHOD(thod.id)}
+                        data-ocid="users.assign_thod.checkbox"
+                      />
+                      <label
+                        htmlFor={`thod-${thod.id}`}
+                        className="text-sm text-foreground cursor-pointer select-none"
+                      >
+                        {thod.name}
+                        <span className="ml-1.5 text-xs text-muted-foreground">
+                          @{thod.username}
+                        </span>
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <DialogFooter className="pt-2">
               <Button
                 type="button"

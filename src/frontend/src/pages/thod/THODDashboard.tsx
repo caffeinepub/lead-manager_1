@@ -35,6 +35,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import {
+  Activity,
   Calendar,
   CheckCircle,
   ChevronDown,
@@ -43,6 +44,7 @@ import {
   Clock,
   Download,
   MapPin,
+  MessageSquare,
   Phone,
   Plus,
   Search,
@@ -50,10 +52,12 @@ import {
   TrendingUp,
   Upload,
   UserCheck,
+  UserPlus,
+  Users,
   X,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { type FormEvent, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   AddLeadDialog,
@@ -116,17 +120,41 @@ const GROUP_COLORS: Record<string, string> = {
   Later: "bg-secondary text-muted-foreground border-border",
 };
 
+function timeAgo(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+function formatDateTime(iso: string) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export function THODDashboard() {
   const { currentUser } = useAuth();
   const {
     leads,
     stages,
     users,
+    notes,
     followUps,
     updateLead,
     assignLeadToHOD,
     assignLeadToFSE,
     addLead,
+    addUser,
     updateFollowUp,
     getDayLogsForDate,
     getPendingOrderIdRequests,
@@ -145,6 +173,15 @@ export function THODDashboard() {
   const [addOpen, setAddOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
 
+  // Create TeleCaller form
+  const [createUserForm, setCreateUserForm] = useState({
+    name: "",
+    username: "",
+    email: "",
+    password: "",
+  });
+  const [createUserError, setCreateUserError] = useState("");
+
   // Assign dialog
   const [assignLeadId, setAssignLeadId] = useState<string | null>(null);
   const [assignHodId, setAssignHodId] = useState<string>("");
@@ -153,13 +190,93 @@ export function THODDashboard() {
   const hods = users.filter((u) => u.role === "HOD");
   const allFses = users.filter((u) => u.role === "FSE");
 
-  // THOD follow-ups: all follow-ups system-wide
-  const thodFollowUps = useMemo(() => {
-    return [...followUps].sort(
-      (a, b) =>
-        new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
+  // TeleCaller IDs assigned to this THOD
+  const myTeleCallerIds = useMemo(() => {
+    return new Set(
+      users
+        .filter(
+          (u) =>
+            u.role === "TeleCaller" &&
+            (u.assignedTHODs ?? []).includes(currentUser?.id ?? ""),
+        )
+        .map((u) => u.id),
     );
-  }, [followUps]);
+  }, [users, currentUser]);
+
+  // THOD visible leads: created by themselves or by TeleCallers assigned to them
+  const visibleLeads = useMemo(() => {
+    return leads.filter(
+      (l) =>
+        l.createdBy === currentUser?.id || myTeleCallerIds.has(l.createdBy),
+    );
+  }, [leads, currentUser, myTeleCallerIds]);
+
+  const visibleLeadIds = useMemo(
+    () => new Set(visibleLeads.map((l) => l.id)),
+    [visibleLeads],
+  );
+
+  // Team activity feed: notes + follow-ups for visible leads, sorted newest first
+  const thodActivityFeed = useMemo(() => {
+    type ActivityItem =
+      | {
+          kind: "note";
+          id: string;
+          leadId: string;
+          authorId: string;
+          text: string;
+          createdAt: string;
+        }
+      | {
+          kind: "followup";
+          id: string;
+          leadId: string;
+          assignedTo: string;
+          description: string;
+          scheduledAt: string;
+          createdAt: string;
+          completed: boolean;
+        };
+
+    const noteItems: ActivityItem[] = notes
+      .filter((n) => visibleLeadIds.has(n.leadId))
+      .map((n) => ({
+        kind: "note" as const,
+        id: n.id,
+        leadId: n.leadId,
+        authorId: n.authorId,
+        text: n.text,
+        createdAt: n.createdAt,
+      }));
+
+    const followUpItems: ActivityItem[] = followUps
+      .filter((f) => visibleLeadIds.has(f.leadId))
+      .map((f) => ({
+        kind: "followup" as const,
+        id: f.id,
+        leadId: f.leadId,
+        assignedTo: f.assignedTo,
+        description: f.description,
+        scheduledAt: f.scheduledAt,
+        createdAt: f.createdAt,
+        completed: f.completed,
+      }));
+
+    return [...noteItems, ...followUpItems].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  }, [notes, followUps, visibleLeadIds]);
+
+  // THOD follow-ups: scoped to visible leads
+  const thodFollowUps = useMemo(() => {
+    return followUps
+      .filter((f) => visibleLeadIds.has(f.leadId))
+      .sort(
+        (a, b) =>
+          new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
+      );
+  }, [followUps, visibleLeadIds]);
 
   const thodPending = thodFollowUps.filter((f) => !f.completed).length;
   const thodCompleted = thodFollowUps.filter((f) => f.completed).length;
@@ -204,10 +321,11 @@ export function THODDashboard() {
     toast.success("Order ID request rejected");
   };
 
-  // Day reports: all TeleCaller + FSE users system-wide
+  // Day reports: only TeleCallers assigned to this THOD
   const thodReportUsers = useMemo(
-    () => users.filter((u) => u.role === "TeleCaller" || u.role === "FSE"),
-    [users],
+    () =>
+      users.filter((u) => u.role === "TeleCaller" && myTeleCallerIds.has(u.id)),
+    [users, myTeleCallerIds],
   );
 
   const thodReportLogs = useMemo(
@@ -217,7 +335,7 @@ export function THODDashboard() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return leads.filter(
+    return visibleLeads.filter(
       (l) =>
         !q ||
         l.title.toLowerCase().includes(q) ||
@@ -226,7 +344,7 @@ export function THODDashboard() {
         (l.city ?? "").toLowerCase().includes(q) ||
         (l.state ?? "").toLowerCase().includes(q),
     );
-  }, [leads, search]);
+  }, [visibleLeads, search]);
 
   const allSelected =
     filtered.length > 0 && filtered.every((l) => selectedIds.has(l.id));
@@ -306,6 +424,38 @@ export function THODDashboard() {
     setAddOpen(false);
   };
 
+  const handleCreateTeleCaller = (e: FormEvent) => {
+    e.preventDefault();
+    setCreateUserError("");
+    const { name, username, email, password } = createUserForm;
+    if (!name.trim() || !username.trim() || !password.trim()) {
+      setCreateUserError("Name, username, and password are required");
+      return;
+    }
+    if (password.length < 6) {
+      setCreateUserError("Password must be at least 6 characters");
+      return;
+    }
+    const exists = users.find((u) => u.username === username.trim());
+    if (exists) {
+      setCreateUserError("Username already taken");
+      return;
+    }
+    addUser({
+      username: username.trim(),
+      name: name.trim(),
+      email: email.trim(),
+      passwordHash: btoa(password.trim()),
+      role: "TeleCaller",
+      status: "pending",
+      createdByRole: "THOD",
+      firstLogin: true,
+      assignedTHODs: currentUser?.id ? [currentUser.id] : [],
+    });
+    toast.success("TeleCaller user created — pending admin approval");
+    setCreateUserForm({ name: "", username: "", email: "", password: "" });
+  };
+
   const handleImport = (importedLeads: Partial<LeadFormInput>[]) => {
     const firstStageId = stages[0]?.id ?? "";
     let count = 0;
@@ -343,7 +493,7 @@ export function THODDashboard() {
             THOD Dashboard
           </h1>
           <p className="text-muted-foreground text-sm mt-0.5">
-            Full visibility — {leads.length} total leads in the system
+            Your team's leads — {visibleLeads.length} leads visible to you
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -417,9 +567,9 @@ export function THODDashboard() {
           >
             <TrendingUp className="w-3.5 h-3.5" />
             All Leads
-            {leads.length > 0 && (
+            {visibleLeads.length > 0 && (
               <span className="ml-1 text-[10px] bg-foreground/10 px-1.5 py-0.5 rounded-full">
-                {leads.length}
+                {visibleLeads.length}
               </span>
             )}
           </TabsTrigger>
@@ -433,6 +583,19 @@ export function THODDashboard() {
             {thodPending > 0 && (
               <span className="ml-1 text-[10px] bg-foreground/10 px-1.5 py-0.5 rounded-full">
                 {thodPending}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger
+            value="team-activity"
+            className="flex items-center gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            data-ocid="thod.tabs.activity.tab"
+          >
+            <Activity className="w-3.5 h-3.5" />
+            Team Activity
+            {thodActivityFeed.length > 0 && (
+              <span className="ml-1 text-[10px] bg-foreground/10 px-1.5 py-0.5 rounded-full">
+                {thodActivityFeed.length}
               </span>
             )}
           </TabsTrigger>
@@ -456,6 +619,14 @@ export function THODDashboard() {
                 {pendingOrderIdRequests.length}
               </span>
             )}
+          </TabsTrigger>
+          <TabsTrigger
+            value="createuser"
+            className="flex items-center gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            data-ocid="thod.tabs.createuser.tab"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            Team
           </TabsTrigger>
         </TabsList>
 
@@ -885,6 +1056,122 @@ export function THODDashboard() {
             </div>
           )}
         </TabsContent>
+
+        {/* ── Team Activity Tab ── */}
+        <TabsContent value="team-activity">
+          {thodActivityFeed.length === 0 ? (
+            <div
+              data-ocid="thod.activity.empty_state"
+              className="text-center py-16 text-muted-foreground"
+            >
+              <Activity className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium">No team activity yet</p>
+              <p className="text-xs mt-1">
+                Notes and follow-ups from your TeleCallers will appear here
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {thodActivityFeed.map((item, idx) => {
+                const lead = visibleLeads.find((l) => l.id === item.leadId);
+                const authorId =
+                  item.kind === "note" ? item.authorId : item.assignedTo;
+                const author = users.find((u) => u.id === authorId);
+
+                return (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: idx * 0.03 }}
+                    data-ocid={`thod.activity.item.${idx + 1}`}
+                    className="flex gap-3 p-4 rounded-xl bg-card border border-border hover:border-border/70 transition-all"
+                  >
+                    {/* Icon */}
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                        item.kind === "note"
+                          ? "bg-blue-500/15 text-blue-400"
+                          : "bg-amber-500/15 text-amber-400"
+                      }`}
+                    >
+                      {item.kind === "note" ? (
+                        <MessageSquare className="w-4 h-4" />
+                      ) : (
+                        <Calendar className="w-4 h-4" />
+                      )}
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-semibold text-foreground">
+                            {author?.name ?? "Unknown User"}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {item.kind === "note"
+                              ? "added a note"
+                              : "scheduled follow-up"}
+                          </span>
+                          {lead && (
+                            <>
+                              <span className="text-[10px] text-muted-foreground">
+                                on
+                              </span>
+                              <span className="text-xs font-medium text-primary truncate max-w-[140px]">
+                                {lead.name}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          {timeAgo(item.createdAt)}
+                        </span>
+                      </div>
+
+                      <p className="text-sm text-foreground/80 leading-relaxed">
+                        {item.kind === "note"
+                          ? item.text
+                          : item.description || "—"}
+                      </p>
+
+                      {item.kind === "followup" && (
+                        <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-amber-400">
+                          <Calendar className="w-3 h-3" />
+                          <span>
+                            Scheduled: {formatDateTime(item.scheduledAt)}
+                          </span>
+                          {item.completed && (
+                            <Badge
+                              variant="outline"
+                              className="ml-1 text-[10px] py-0 px-1.5 border-emerald-500/40 text-emerald-400 bg-emerald-500/10"
+                            >
+                              Completed
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Author role badge */}
+                      {author && (
+                        <div className="mt-1.5">
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] py-0 px-1.5 border-border text-muted-foreground"
+                          >
+                            {author.role}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
         {/* ── Day Reports Tab ── */}
         <TabsContent value="dayreports">
           <div className="flex items-center gap-3 mb-5">
@@ -919,10 +1206,10 @@ export function THODDashboard() {
             >
               <ClipboardList className="w-10 h-10 mx-auto mb-3 opacity-30" />
               <p className="text-sm font-medium">
-                No TeleCaller or FSE users found
+                No TeleCallers assigned to you
               </p>
               <p className="text-xs mt-1">
-                Add TeleCaller or FSE users to see day reports
+                TeleCallers assigned to you will appear here
               </p>
             </div>
           ) : (
@@ -1219,6 +1506,204 @@ export function THODDashboard() {
               })}
             </div>
           )}
+        </TabsContent>
+
+        {/* ── Create User (Team) Tab ── */}
+        <TabsContent value="createuser">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Create TeleCaller Form */}
+            <div>
+              <div className="mb-4">
+                <h2 className="font-display text-base font-semibold text-foreground flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-primary" />
+                  Create TeleCaller User
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  New TeleCaller accounts need admin approval before activation
+                </p>
+              </div>
+              <form
+                onSubmit={handleCreateTeleCaller}
+                className="space-y-4 bg-card border border-border rounded-xl p-5"
+              >
+                <div>
+                  <label
+                    htmlFor="thod-cu-name"
+                    className="text-sm text-muted-foreground mb-1.5 block"
+                  >
+                    Full Name <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    id="thod-cu-name"
+                    value={createUserForm.name}
+                    onChange={(e) =>
+                      setCreateUserForm((p) => ({ ...p, name: e.target.value }))
+                    }
+                    placeholder="Full name"
+                    required
+                    className="w-full h-10 px-3 rounded-md bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    data-ocid="thod.createuser.name.input"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="thod-cu-username"
+                    className="text-sm text-muted-foreground mb-1.5 block"
+                  >
+                    Username <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    id="thod-cu-username"
+                    value={createUserForm.username}
+                    onChange={(e) =>
+                      setCreateUserForm((p) => ({
+                        ...p,
+                        username: e.target.value,
+                      }))
+                    }
+                    placeholder="username"
+                    required
+                    className="w-full h-10 px-3 rounded-md bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    data-ocid="thod.createuser.username.input"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="thod-cu-email"
+                    className="text-sm text-muted-foreground mb-1.5 block"
+                  >
+                    Email
+                  </label>
+                  <input
+                    id="thod-cu-email"
+                    type="email"
+                    value={createUserForm.email}
+                    onChange={(e) =>
+                      setCreateUserForm((p) => ({
+                        ...p,
+                        email: e.target.value,
+                      }))
+                    }
+                    placeholder="email@company.com"
+                    className="w-full h-10 px-3 rounded-md bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    data-ocid="thod.createuser.email.input"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="thod-cu-password"
+                    className="text-sm text-muted-foreground mb-1.5 block"
+                  >
+                    Temporary Password{" "}
+                    <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    id="thod-cu-password"
+                    type="password"
+                    value={createUserForm.password}
+                    onChange={(e) =>
+                      setCreateUserForm((p) => ({
+                        ...p,
+                        password: e.target.value,
+                      }))
+                    }
+                    placeholder="Min 6 characters"
+                    required
+                    className="w-full h-10 px-3 rounded-md bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    data-ocid="thod.createuser.password.input"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    User will be prompted to change this on first login
+                  </p>
+                </div>
+                {createUserError && (
+                  <p
+                    className="text-xs text-destructive"
+                    data-ocid="thod.createuser.error_state"
+                  >
+                    {createUserError}
+                  </p>
+                )}
+                <Button
+                  type="submit"
+                  className="w-full bg-primary text-primary-foreground"
+                  data-ocid="thod.createuser.submit_button"
+                >
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Create TeleCaller (Pending Approval)
+                </Button>
+              </form>
+            </div>
+
+            {/* TeleCaller Users List */}
+            <div>
+              <div className="mb-4">
+                <h2 className="font-display text-base font-semibold text-foreground">
+                  My TeleCaller Users
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  TeleCaller accounts assigned to you
+                </p>
+              </div>
+              <div className="space-y-2">
+                {users
+                  .filter(
+                    (u) =>
+                      u.role === "TeleCaller" &&
+                      (u.assignedTHODs ?? []).includes(currentUser?.id ?? ""),
+                  )
+                  .map((user, idx) => (
+                    <motion.div
+                      key={user.id}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: idx * 0.04 }}
+                      data-ocid={`thod.team.tc.item.${idx + 1}`}
+                      className="flex items-center gap-3 p-3 rounded-lg bg-card border border-border"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center shrink-0">
+                        <span className="text-xs font-bold text-orange-400">
+                          {user.name.charAt(0)}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">
+                          {user.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          @{user.username}
+                        </p>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={
+                          (user.status ?? "active") === "active"
+                            ? "text-[10px] bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                            : (user.status ?? "active") === "pending"
+                              ? "text-[10px] bg-amber-500/15 text-amber-300 border-amber-500/30"
+                              : "text-[10px] bg-rose-500/15 text-rose-300 border-rose-500/30"
+                        }
+                      >
+                        {user.status ?? "active"}
+                      </Badge>
+                    </motion.div>
+                  ))}
+                {users.filter(
+                  (u) =>
+                    u.role === "TeleCaller" &&
+                    (u.assignedTHODs ?? []).includes(currentUser?.id ?? ""),
+                ).length === 0 && (
+                  <div
+                    data-ocid="thod.team.tc.empty_state"
+                    className="text-center py-8 text-muted-foreground text-sm"
+                  >
+                    <Users className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    No TeleCallers assigned to you yet
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 

@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import type {
+  ApprovalLog,
   DayLocation,
   DayLog,
   FirstVisitReport,
@@ -18,6 +19,8 @@ import type {
   User,
 } from "../types/lms";
 import {
+  generateOrderId,
+  getApprovalLogs,
   getDayLogs,
   getFVRs,
   getFollowUps,
@@ -27,6 +30,7 @@ import {
   getSaleOrders,
   getStages,
   getUsers,
+  saveApprovalLogs,
   saveDayLogs,
   saveFVRs,
   saveFollowUps,
@@ -117,6 +121,10 @@ interface LMSContextType {
   ) => void;
   getLeadOrderIdRequests: (leadId: string) => OrderIdRequest[];
   getPendingOrderIdRequests: () => OrderIdRequest[];
+  deleteOrderId: (requestId: string) => void;
+
+  // Approval Logs
+  approvalLogs: ApprovalLog[];
 }
 
 const LMSContext = createContext<LMSContextType | undefined>(undefined);
@@ -136,6 +144,9 @@ export function LMSProvider({ children }: { children: ReactNode }) {
   );
   const [orderIdRequests, setOrderIdRequestsState] = useState<OrderIdRequest[]>(
     () => getOrderIdRequests(),
+  );
+  const [approvalLogs, setApprovalLogsState] = useState<ApprovalLog[]>(() =>
+    getApprovalLogs(),
   );
 
   // --- Sync helpers ---
@@ -615,8 +626,58 @@ export function LMSProvider({ children }: { children: ReactNode }) {
       id: string,
       updates: Partial<Omit<OrderIdRequest, "id" | "createdAt">>,
     ) => {
+      setOrderIdRequests((prev) => {
+        const newRequests = prev.map((r) => {
+          if (r.id !== id) return r;
+          const updated = { ...r, ...updates };
+          // Auto-generate Order ID when approving
+          if (updates.status === "approved" && !r.orderId) {
+            updated.orderId = generateOrderId(
+              updates.reviewedAt ?? new Date().toISOString(),
+            );
+          }
+          return updated;
+        });
+
+        // Create approval log entry if status changed
+        if (updates.status === "approved" || updates.status === "rejected") {
+          const req = prev.find((r) => r.id === id);
+          if (req) {
+            // Find the updated request to get the orderId
+            const updatedReq = newRequests.find((r) => r.id === id);
+            const now = new Date().toISOString();
+            const log: ApprovalLog = {
+              id: crypto.randomUUID(),
+              orderIdRequestId: id,
+              leadId: req.leadId,
+              leadName: req.submittedByName, // will be overridden by lead name in display
+              action: updates.status as "approved" | "rejected",
+              reviewedById: updates.reviewedById ?? "",
+              reviewedByName: updates.reviewedByName ?? "",
+              orderId:
+                updates.status === "approved" ? updatedReq?.orderId : undefined,
+              reviewedAt: updates.reviewedAt ?? now,
+              createdAt: now,
+            };
+            // Save log immediately (bypass state setter to avoid closure issues)
+            const existingLogs = getApprovalLogs();
+            saveApprovalLogs([log, ...existingLogs]);
+            setApprovalLogsState((prev) => [log, ...prev]);
+          }
+        }
+
+        return newRequests;
+      });
+    },
+    [setOrderIdRequests],
+  );
+
+  const deleteOrderId = useCallback(
+    (requestId: string) => {
       setOrderIdRequests((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, ...updates } : r)),
+        prev.map((r) =>
+          r.id === requestId ? { ...r, orderId: undefined } : r,
+        ),
       );
     },
     [setOrderIdRequests],
@@ -685,6 +746,8 @@ export function LMSProvider({ children }: { children: ReactNode }) {
     updateOrderIdRequest,
     getLeadOrderIdRequests,
     getPendingOrderIdRequests,
+    deleteOrderId,
+    approvalLogs,
   };
 
   return <LMSContext.Provider value={value}>{children}</LMSContext.Provider>;

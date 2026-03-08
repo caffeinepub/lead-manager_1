@@ -1033,6 +1033,16 @@ export function FSEDashboard() {
                                           : "Incomplete"}
                                   </span>
                                 </div>
+                                {req.status === "approved" && req.orderId && (
+                                  <div className="mb-1.5 px-2.5 py-1.5 rounded bg-primary/10 border border-primary/25 flex items-center gap-1.5">
+                                    <span className="text-xs font-semibold text-primary">
+                                      Order ID:
+                                    </span>
+                                    <span className="font-mono text-xs font-bold text-primary">
+                                      {req.orderId}
+                                    </span>
+                                  </div>
+                                )}
                                 <p className="text-muted-foreground">
                                   {formatDateTime(req.submittedAt)} ·{" "}
                                   {req.submittedByName}

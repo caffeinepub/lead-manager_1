@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   CheckCircle,
   ClipboardCheck,
+  History,
   LayoutDashboard,
   TrendingUp,
   X,
@@ -31,6 +32,7 @@ export function BODashboard() {
     users,
     getPendingOrderIdRequests,
     updateOrderIdRequest,
+    approvalLogs,
   } = useLMS();
 
   const [activeTab, setActiveTab] = useState("pendingapproval");
@@ -109,6 +111,14 @@ export function BODashboard() {
           >
             <LayoutDashboard className="w-3.5 h-3.5" />
             All Leads
+          </TabsTrigger>
+          <TabsTrigger
+            value="approvallog"
+            className="flex items-center gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            data-ocid="bo.tabs.approvallog.tab"
+          >
+            <History className="w-3.5 h-3.5" />
+            Approval Log
           </TabsTrigger>
         </TabsList>
 
@@ -351,6 +361,100 @@ export function BODashboard() {
                 </TableBody>
               </Table>
             </Card>
+          )}
+        </TabsContent>
+
+        {/* ── Approval Log Tab ── */}
+        <TabsContent value="approvallog">
+          <div className="mb-4">
+            <h2 className="font-display text-base font-semibold text-foreground">
+              Order ID Approval Log
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              All approval and rejection actions on Order ID requests
+            </p>
+          </div>
+
+          {approvalLogs.length === 0 ? (
+            <div
+              data-ocid="bo.approvallog.empty_state"
+              className="text-center py-16 text-muted-foreground"
+            >
+              <History className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium">No approval activity yet</p>
+              <p className="text-xs mt-1">
+                Approved and rejected Order ID requests will be logged here
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3" data-ocid="bo.approvallog.list">
+              {approvalLogs.map((log, i) => {
+                const lead = leads.find((l) => l.id === log.leadId);
+                return (
+                  <motion.div
+                    key={log.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.03 }}
+                    data-ocid={`bo.approvallog.item.${i + 1}`}
+                    className="flex items-center gap-4 p-4 rounded-xl bg-card border border-border shadow-card hover:border-border/70 transition-all"
+                  >
+                    <div
+                      className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                        log.action === "approved"
+                          ? "bg-emerald-500/15"
+                          : "bg-rose-500/15"
+                      }`}
+                    >
+                      {log.action === "approved" ? (
+                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                      ) : (
+                        <X className="w-4 h-4 text-rose-400" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-medium text-foreground text-sm truncate">
+                          {lead?.name ?? "Unknown Lead"}
+                        </p>
+                        <Badge
+                          variant="outline"
+                          className={
+                            log.action === "approved"
+                              ? "text-[10px] bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                              : "text-[10px] bg-rose-500/15 text-rose-300 border-rose-500/30"
+                          }
+                        >
+                          {log.action === "approved" ? "Approved" : "Rejected"}
+                        </Badge>
+                        {log.orderId && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] bg-primary/15 text-primary border-primary/30 font-mono"
+                          >
+                            Order ID: {log.orderId}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        By{" "}
+                        <span className="text-foreground">
+                          {log.reviewedByName}
+                        </span>{" "}
+                        ·{" "}
+                        {new Date(log.reviewedAt).toLocaleString("en-IN", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
           )}
         </TabsContent>
       </Tabs>

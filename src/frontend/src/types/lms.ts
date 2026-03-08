@@ -10,6 +10,11 @@ export interface User {
   email: string;
   role: Role;
   createdAt: string;
+  status?: "active" | "pending" | "rejected"; // default "active" for existing users
+  createdByRole?: Role; // who created this user
+  firstLogin?: boolean; // true = must reset password on first login
+  assignedHODs?: string[]; // HOD user IDs this FSE is assigned to
+  assignedTHODs?: string[]; // THOD user IDs this TeleCaller is assigned to
 }
 
 // Stage
@@ -140,7 +145,22 @@ export interface OrderIdRequest {
   reviewedById?: string;
   reviewedByName?: string;
   reviewedAt?: string;
+  orderId?: string; // generated on approval: FY/MM/serial
   submittedAt: string;
+  createdAt: string;
+}
+
+// Approval Log
+export interface ApprovalLog {
+  id: string;
+  orderIdRequestId: string;
+  leadId: string;
+  leadName: string;
+  action: "approved" | "rejected";
+  reviewedById: string;
+  reviewedByName: string;
+  orderId?: string; // populated if approved
+  reviewedAt: string;
   createdAt: string;
 }
 
@@ -155,6 +175,12 @@ export const LS_DAYLOGS = "lms_daylogs";
 export const LS_FVRS = "lms_fvrs";
 export const LS_SALE_ORDERS = "lms_sale_orders";
 export const LS_ORDER_ID_REQUESTS = "lms_order_id_requests";
+export const LS_ORDER_ID_COUNTER = "lms_order_id_counter";
+export const LS_APPROVAL_LOGS = "lms_approval_logs";
+export const LS_SCHEMA_VERSION = "lms_schema_version";
+
+// Current schema version — bump this when adding new fields that require migration
+export const CURRENT_SCHEMA_VERSION = 20;
 
 // Session
 export interface Session {

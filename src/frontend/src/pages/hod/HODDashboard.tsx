@@ -51,10 +51,11 @@ import {
   TrendingUp,
   Upload,
   UserCheck,
+  UserPlus,
   Users,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { type FormEvent, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   AddLeadDialog,
@@ -166,23 +167,50 @@ export function HODDashboard() {
     notes,
     followUps,
     addLead,
+    addUser,
     assignLeadToFSE,
     getLeadNotes,
     addNote,
     getLeadFollowUps,
     getLeadFVRs,
+    getLeadOrderIdRequests,
     updateFollowUp,
     getDayLogsForDate,
   } = useLMS();
 
-  // HOD only sees leads assigned to them
+  // FSE IDs that belong to this HOD (via assignedHODs)
+  const fseIdsUnderHOD = useMemo(() => {
+    return new Set(
+      users
+        .filter(
+          (u) =>
+            u.role === "FSE" &&
+            (u.assignedHODs ?? []).includes(currentUser?.id ?? ""),
+        )
+        .map((u) => u.id),
+    );
+  }, [users, currentUser]);
+
+  // HOD sees:
+  //  1. Leads assigned to them by admin
+  //  2. Leads they created themselves
+  //  3. Leads created by any FSE under them
   const myLeads = useMemo(() => {
-    return leads.filter((l) => l.assignedToHOD === currentUser?.id);
-  }, [leads, currentUser]);
+    return leads.filter(
+      (l) =>
+        l.assignedToHOD === currentUser?.id ||
+        l.createdBy === currentUser?.id ||
+        fseIdsUnderHOD.has(l.createdBy),
+    );
+  }, [leads, currentUser, fseIdsUnderHOD]);
 
   const myLeadIds = useMemo(() => new Set(myLeads.map((l) => l.id)), [myLeads]);
 
-  const fses = users.filter((u) => u.role === "FSE");
+  const fses = users.filter(
+    (u) =>
+      u.role === "FSE" &&
+      (u.assignedHODs ?? []).includes(currentUser?.id ?? ""),
+  );
 
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [assignFSELeadId, setAssignFSELeadId] = useState<string | null>(null);
@@ -195,6 +223,15 @@ export function HODDashboard() {
   // Selection state for download
   const [hodSelectedIds, setHodSelectedIds] = useState<Set<string>>(new Set());
 
+  // Create FSE user form
+  const [createUserForm, setCreateUserForm] = useState({
+    name: "",
+    username: "",
+    email: "",
+    password: "",
+  });
+  const [createUserError, setCreateUserError] = useState("");
+
   // Day reports state
   const todayStr = new Date().toISOString().slice(0, 10);
   const [reportDate, setReportDate] = useState(todayStr);
@@ -206,18 +243,15 @@ export function HODDashboard() {
     return { total, assigned, unassigned };
   }, [myLeads]);
 
-  // HOD follow-ups: all follow-ups for leads assigned to this HOD
+  // HOD follow-ups: all follow-ups for leads visible to this HOD
   const hodFollowUps = useMemo(() => {
     return followUps
-      .filter((f) => {
-        const lead = leads.find((l) => l.id === f.leadId);
-        return lead?.assignedToHOD === currentUser?.id;
-      })
+      .filter((f) => myLeadIds.has(f.leadId))
       .sort(
         (a, b) =>
           new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
       );
-  }, [followUps, leads, currentUser]);
+  }, [followUps, myLeadIds]);
 
   const hodPending = hodFollowUps.filter((f) => !f.completed).length;
   const hodCompleted = hodFollowUps.filter((f) => f.completed).length;
@@ -237,16 +271,15 @@ export function HODDashboard() {
     toast.success(completed ? "Marked as complete" : "Marked as pending");
   };
 
-  // Day reports: FSEs assigned to leads under this HOD
-  const hodFseIds = useMemo(
-    () =>
-      new Set(myLeads.map((l) => l.assignedToFSE).filter(Boolean) as string[]),
-    [myLeads],
-  );
-
+  // Day reports: FSEs directly assigned to this HOD (via assignedHODs field)
   const hodFseUsers = useMemo(
-    () => users.filter((u) => u.role === "FSE" && hodFseIds.has(u.id)),
-    [users, hodFseIds],
+    () =>
+      users.filter(
+        (u) =>
+          u.role === "FSE" &&
+          (u.assignedHODs ?? []).includes(currentUser?.id ?? ""),
+      ),
+    [users, currentUser],
   );
 
   const hodReportLogs = useMemo(
@@ -380,6 +413,9 @@ export function HODDashboard() {
     ? getLeadFollowUps(selectedLead.id)
     : [];
   const selectedLeadFVRs = selectedLead ? getLeadFVRs(selectedLead.id) : [];
+  const selectedLeadOrderIdRequests = selectedLead
+    ? getLeadOrderIdRequests(selectedLead.id)
+    : [];
 
   // Checkbox helpers for HOD lead cards
   const allSelected =
@@ -401,6 +437,39 @@ export function HODDashboard() {
       else next.add(id);
       return next;
     });
+  };
+
+  const handleCreateFSE = (e: FormEvent) => {
+    e.preventDefault();
+    setCreateUserError("");
+    const { name, username, email, password } = createUserForm;
+    if (!name.trim() || !username.trim() || !password.trim()) {
+      setCreateUserError("Name, username, and password are required");
+      return;
+    }
+    if (password.length < 6) {
+      setCreateUserError("Password must be at least 6 characters");
+      return;
+    }
+    // Check username uniqueness
+    const exists = users.find((u) => u.username === username.trim());
+    if (exists) {
+      setCreateUserError("Username already taken");
+      return;
+    }
+    addUser({
+      username: username.trim(),
+      name: name.trim(),
+      email: email.trim(),
+      passwordHash: btoa(password.trim()),
+      role: "FSE",
+      status: "pending",
+      createdByRole: "HOD",
+      firstLogin: true,
+      assignedHODs: currentUser?.id ? [currentUser.id] : [],
+    });
+    toast.success("FSE user created — pending admin approval");
+    setCreateUserForm({ name: "", username: "", email: "", password: "" });
   };
 
   const handleDownloadAll = () => {
@@ -540,6 +609,14 @@ export function HODDashboard() {
           >
             <ClipboardList className="w-3.5 h-3.5" />
             Day Reports
+          </TabsTrigger>
+          <TabsTrigger
+            value="createuser"
+            className="flex items-center gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            data-ocid="hod.tabs.createuser.tab"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            Team
           </TabsTrigger>
         </TabsList>
 
@@ -1217,6 +1294,178 @@ export function HODDashboard() {
             </div>
           )}
         </TabsContent>
+
+        {/* ── Create User (Team) Tab ── */}
+        <TabsContent value="createuser">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Create FSE Form */}
+            <div>
+              <div className="mb-4">
+                <h2 className="font-display text-base font-semibold text-foreground flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-primary" />
+                  Create FSE User
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  New FSE accounts need admin approval before activation
+                </p>
+              </div>
+              <form
+                onSubmit={handleCreateFSE}
+                className="space-y-4 bg-card border border-border rounded-xl p-5"
+              >
+                <div>
+                  <Label className="text-sm text-muted-foreground mb-1.5 block">
+                    Full Name <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    value={createUserForm.name}
+                    onChange={(e) =>
+                      setCreateUserForm((p) => ({ ...p, name: e.target.value }))
+                    }
+                    placeholder="Full name"
+                    required
+                    className="bg-secondary border-border"
+                    data-ocid="hod.createuser.name.input"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground mb-1.5 block">
+                    Username <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    value={createUserForm.username}
+                    onChange={(e) =>
+                      setCreateUserForm((p) => ({
+                        ...p,
+                        username: e.target.value,
+                      }))
+                    }
+                    placeholder="username"
+                    required
+                    className="bg-secondary border-border"
+                    data-ocid="hod.createuser.username.input"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground mb-1.5 block">
+                    Email
+                  </Label>
+                  <Input
+                    type="email"
+                    value={createUserForm.email}
+                    onChange={(e) =>
+                      setCreateUserForm((p) => ({
+                        ...p,
+                        email: e.target.value,
+                      }))
+                    }
+                    placeholder="email@company.com"
+                    className="bg-secondary border-border"
+                    data-ocid="hod.createuser.email.input"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground mb-1.5 block">
+                    Temporary Password{" "}
+                    <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    type="password"
+                    value={createUserForm.password}
+                    onChange={(e) =>
+                      setCreateUserForm((p) => ({
+                        ...p,
+                        password: e.target.value,
+                      }))
+                    }
+                    placeholder="Min 6 characters"
+                    required
+                    className="bg-secondary border-border"
+                    data-ocid="hod.createuser.password.input"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    User will be prompted to change this on first login
+                  </p>
+                </div>
+                {createUserError && (
+                  <p
+                    className="text-xs text-destructive"
+                    data-ocid="hod.createuser.error_state"
+                  >
+                    {createUserError}
+                  </p>
+                )}
+                <Button
+                  type="submit"
+                  className="w-full bg-primary text-primary-foreground"
+                  data-ocid="hod.createuser.submit_button"
+                >
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Create FSE (Pending Approval)
+                </Button>
+              </form>
+            </div>
+
+            {/* FSE Users List */}
+            <div>
+              <div className="mb-4">
+                <h2 className="font-display text-base font-semibold text-foreground">
+                  FSE Users
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  All FSE accounts in the system
+                </p>
+              </div>
+              <div className="space-y-2">
+                {fses.map((user, idx) => (
+                  <motion.div
+                    key={user.id}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: idx * 0.04 }}
+                    data-ocid={`hod.team.fse.item.${idx + 1}`}
+                    className="flex items-center gap-3 p-3 rounded-lg bg-card border border-border"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                      <span className="text-xs font-bold text-emerald-400">
+                        {user.name.charAt(0)}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {user.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        @{user.username}
+                      </p>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={
+                        (user.status ?? "active") === "active"
+                          ? "text-[10px] bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                          : (user.status ?? "active") === "pending"
+                            ? "text-[10px] bg-amber-500/15 text-amber-300 border-amber-500/30"
+                            : "text-[10px] bg-rose-500/15 text-rose-300 border-rose-500/30"
+                      }
+                    >
+                      {user.status ?? "active"}
+                    </Badge>
+                  </motion.div>
+                ))}
+                {fses.length === 0 && (
+                  <div
+                    data-ocid="hod.team.fse.empty_state"
+                    className="text-center py-8 text-muted-foreground text-sm"
+                  >
+                    <Users className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    No FSEs assigned to you yet
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </TabsContent>
       </Tabs>
 
       {/* Add Lead Dialog */}
@@ -1409,6 +1658,68 @@ export function HODDashboard() {
                           </div>
                         );
                       })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Order ID Requests */}
+                {selectedLeadOrderIdRequests.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                      Order ID Requests ({selectedLeadOrderIdRequests.length})
+                    </p>
+                    <div className="space-y-2">
+                      {selectedLeadOrderIdRequests.map((req, i) => (
+                        <div
+                          key={req.id}
+                          className="p-2.5 rounded-md bg-blue-500/8 border border-blue-500/20 text-xs"
+                          data-ocid={`hod.lead.order_id_request.item.${i + 1}`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-blue-400 font-medium">
+                              {
+                                [
+                                  req.lightBill,
+                                  req.panCard,
+                                  req.cancelledCheque,
+                                  req.aadharCard,
+                                  req.allDocsGiven,
+                                  req.loanApproved,
+                                  req.nameOnLightBill,
+                                  req.sanctionLoad,
+                                  req.noc,
+                                ].filter(Boolean).length
+                              }
+                              /9 docs
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full font-medium border ${
+                                req.status === "approved"
+                                  ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                                  : req.status === "rejected"
+                                    ? "bg-rose-500/15 text-rose-300 border-rose-500/30"
+                                    : "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                              }`}
+                            >
+                              {req.status === "approved"
+                                ? "Approved"
+                                : req.status === "rejected"
+                                  ? "Rejected"
+                                  : "Pending"}
+                            </span>
+                          </div>
+                          {req.status === "approved" && req.orderId && (
+                            <div className="mt-1.5 px-2.5 py-1.5 rounded bg-primary/10 border border-primary/25 flex items-center gap-1.5">
+                              <span className="font-semibold text-primary">
+                                Order ID:
+                              </span>
+                              <span className="font-mono font-bold text-primary">
+                                {req.orderId}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}

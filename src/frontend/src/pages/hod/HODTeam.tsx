@@ -11,7 +11,11 @@ export function HODTeam() {
   const { currentUser } = useAuth();
   const { users, leads, stages } = useLMS();
 
-  const fses = users.filter((u) => u.role === "FSE");
+  const fses = users.filter(
+    (u) =>
+      u.role === "FSE" &&
+      (u.assignedHODs ?? []).includes(currentUser?.id ?? ""),
+  );
   const myLeads = leads.filter((l) => l.assignedToHOD === currentUser?.id);
 
   const fseStats = useMemo(() => {
@@ -43,8 +47,8 @@ export function HODTeam() {
           data-ocid="hod.team.empty_state"
           className="text-center py-16 text-muted-foreground"
         >
-          <p className="text-sm font-medium">No FSEs in the system</p>
-          <p className="text-xs mt-1">Contact Admin to add FSE members</p>
+          <p className="text-sm font-medium">No FSEs assigned to you yet</p>
+          <p className="text-xs mt-1">Contact Admin to assign FSE members</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -12,6 +12,7 @@ import { Layout } from "./components/Layout";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LMSProvider } from "./context/LMSContext";
 import { LoginPage } from "./pages/LoginPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { AdminDashboard } from "./pages/admin/AdminDashboard";
 import { AdminLeads } from "./pages/admin/AdminLeads";
 import { StageManagement } from "./pages/admin/StageManagement";
@@ -55,10 +56,14 @@ function RoleRedirect() {
 }
 
 function AuthWrapper() {
-  const { currentUser } = useAuth();
+  const { currentUser, requiresPasswordReset } = useAuth();
 
   if (!currentUser) {
     return <LoginPage />;
+  }
+
+  if (requiresPasswordReset) {
+    return <ResetPasswordPage />;
   }
 
   return (

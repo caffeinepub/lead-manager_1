@@ -33,9 +33,11 @@ export function LoginPage() {
     setLoading(true);
     // Simulate brief loading
     setTimeout(() => {
-      const ok = login(username.trim(), password);
-      if (!ok) {
-        setError("Invalid username or password. Please try again.");
+      const result = login(username.trim(), password);
+      if (!result.success) {
+        setError(
+          result.error ?? "Invalid username or password. Please try again.",
+        );
       }
       setLoading(false);
     }, 300);
