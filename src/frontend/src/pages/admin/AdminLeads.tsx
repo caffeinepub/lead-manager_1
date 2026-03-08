@@ -45,36 +45,48 @@ import {
   ChevronDown,
   Download,
   Edit2,
+  MapPin,
+  Phone,
   Plus,
   Search,
   Trash2,
   TrendingUp,
+  Upload,
   UserCheck,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { type FormEvent, useMemo, useState } from "react";
 import { toast } from "sonner";
+import {
+  AddLeadDialog,
+  type LeadFormInput,
+} from "../../components/AddLeadDialog";
+import { LeadUploadDialog } from "../../components/LeadUploadDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useLMS } from "../../context/LMSContext";
 import { LEAD_SOURCES, type Lead, SOURCE_COLORS } from "../../types/lms";
 import { exportLeadsToCSV } from "../../utils/exportLeads";
 
 interface LeadFormData {
-  title: string;
   name: string;
-  email: string;
-  phone: string;
-  company: string;
+  mobileNo: string;
+  address: string;
+  monthlyBill: string;
+  state: string;
+  city: string;
+  appointedAt: string;
   source: string;
   stageId: string;
 }
 
 const defaultLeadForm: LeadFormData = {
-  title: "",
   name: "",
-  email: "",
-  phone: "",
-  company: "",
+  mobileNo: "",
+  address: "",
+  monthlyBill: "",
+  state: "",
+  city: "",
+  appointedAt: "",
   source: "Web",
   stageId: "",
 };
@@ -91,11 +103,17 @@ export function AdminLeads() {
     users,
   } = useLMS();
 
+  const isArpit = currentUser?.username === "arpit2127";
+
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [editLead, setEditLead] = useState<Lead | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const [deleteLead_, setDeleteLead_] = useState<string | null>(null);
-  const [form, setForm] = useState<LeadFormData>({ ...defaultLeadForm });
+  const [editForm, setEditForm] = useState<LeadFormData>({
+    ...defaultLeadForm,
+  });
   const [assignLeadId, setAssignLeadId] = useState<string | null>(null);
   const [assignHodId, setAssignHodId] = useState<string>("");
 
@@ -111,8 +129,9 @@ export function AdminLeads() {
         !q ||
         l.title.toLowerCase().includes(q) ||
         l.name.toLowerCase().includes(q) ||
-        l.company.toLowerCase().includes(q) ||
-        l.email.toLowerCase().includes(q),
+        (l.mobileNo ?? "").toLowerCase().includes(q) ||
+        (l.city ?? "").toLowerCase().includes(q) ||
+        (l.state ?? "").toLowerCase().includes(q),
     );
   }, [leads, search]);
 
@@ -142,56 +161,88 @@ export function AdminLeads() {
   const getUser = (userId: string | null) =>
     userId ? users.find((u) => u.id === userId) : null;
 
-  const openAdd = () => {
-    setForm({ ...defaultLeadForm, stageId: stages[0]?.id ?? "" });
-    setEditLead(null);
-    setAddOpen(true);
-  };
-
   const openEdit = (lead: Lead) => {
-    setForm({
-      title: lead.title,
+    setEditForm({
       name: lead.name,
-      email: lead.email,
-      phone: lead.phone,
-      company: lead.company,
+      mobileNo: lead.mobileNo ?? "",
+      address: lead.address ?? "",
+      monthlyBill: lead.monthlyBill ?? "",
+      state: lead.state ?? "",
+      city: lead.city ?? "",
+      appointedAt: lead.appointedAt ?? "",
       source: lead.source,
       stageId: lead.stageId,
     });
     setEditLead(lead);
-    setAddOpen(true);
+    setEditOpen(true);
   };
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!form.title.trim() || !form.name.trim()) return;
-    if (editLead) {
-      updateLead(editLead.id, {
-        title: form.title.trim(),
-        name: form.name.trim(),
-        email: form.email.trim(),
-        phone: form.phone.trim(),
-        company: form.company.trim(),
-        source: form.source,
-        stageId: form.stageId,
-      });
-      toast.success("Lead updated");
-    } else {
+  const handleAddSubmit = (data: LeadFormInput) => {
+    addLead({
+      title: data.name.trim(),
+      name: data.name.trim(),
+      mobileNo: data.mobileNo.trim(),
+      address: data.address.trim(),
+      monthlyBill: data.monthlyBill.trim(),
+      state: data.state.trim(),
+      city: data.city.trim(),
+      appointedAt: data.appointedAt,
+      source: data.source,
+      stageId: data.stageId || (stages[0]?.id ?? ""),
+      assignedToHOD: null,
+      assignedToFSE: null,
+      createdBy: currentUser?.id ?? "",
+      uploadedBy: null,
+    });
+    toast.success("Lead added");
+    setAddOpen(false);
+  };
+
+  const handleImport = (importedLeads: Partial<LeadFormInput>[]) => {
+    const firstStageId = stages[0]?.id ?? "";
+    let count = 0;
+    for (const row of importedLeads) {
+      if (!row.name?.trim()) continue;
       addLead({
-        title: form.title.trim(),
-        name: form.name.trim(),
-        email: form.email.trim(),
-        phone: form.phone.trim(),
-        company: form.company.trim(),
-        source: form.source,
-        stageId: form.stageId,
+        title: row.name.trim(),
+        name: row.name.trim(),
+        mobileNo: row.mobileNo?.trim() ?? "",
+        address: row.address?.trim() ?? "",
+        monthlyBill: row.monthlyBill?.trim() ?? "",
+        state: row.state?.trim() ?? "",
+        city: row.city?.trim() ?? "",
+        appointedAt: row.appointedAt ?? "",
+        source: row.source?.trim() || "Other",
+        stageId: firstStageId,
         assignedToHOD: null,
         assignedToFSE: null,
         createdBy: currentUser?.id ?? "",
+        uploadedBy: currentUser?.id ?? null,
       });
-      toast.success("Lead added");
+      count++;
     }
-    setAddOpen(false);
+    if (count > 0) {
+      toast.success(`Imported ${count} lead${count !== 1 ? "s" : ""}`);
+    }
+  };
+
+  const handleEditSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!editLead || !editForm.name.trim()) return;
+    updateLead(editLead.id, {
+      title: editForm.name.trim(),
+      name: editForm.name.trim(),
+      mobileNo: editForm.mobileNo.trim(),
+      address: editForm.address.trim(),
+      monthlyBill: editForm.monthlyBill.trim(),
+      state: editForm.state.trim(),
+      city: editForm.city.trim(),
+      appointedAt: editForm.appointedAt,
+      source: editForm.source,
+      stageId: editForm.stageId,
+    });
+    toast.success("Lead updated");
+    setEditOpen(false);
     setEditLead(null);
   };
 
@@ -281,7 +332,17 @@ export function AdminLeads() {
           </DropdownMenu>
 
           <Button
-            onClick={openAdd}
+            variant="outline"
+            onClick={() => setUploadOpen(true)}
+            className="border-border bg-secondary hover:bg-secondary/70 gap-1.5"
+            data-ocid="leads.upload_button"
+          >
+            <Upload className="w-4 h-4" />
+            Upload CSV
+          </Button>
+
+          <Button
+            onClick={() => setAddOpen(true)}
             className="bg-primary text-primary-foreground hover:opacity-90"
             data-ocid="leads.add_button"
           >
@@ -295,7 +356,7 @@ export function AdminLeads() {
       <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
-          placeholder="Search by title, name, company..."
+          placeholder="Search by name, mobile, city, state..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-9 bg-secondary border-border max-w-sm"
@@ -320,7 +381,7 @@ export function AdminLeads() {
                 Lead
               </TableHead>
               <TableHead className="text-muted-foreground font-medium hidden md:table-cell">
-                Company
+                Mobile / Location
               </TableHead>
               <TableHead className="text-muted-foreground font-medium">
                 Stage
@@ -374,7 +435,7 @@ export function AdminLeads() {
                       <Checkbox
                         checked={isSelected}
                         onCheckedChange={() => toggleSelect(lead.id)}
-                        aria-label={`Select lead ${lead.title}`}
+                        aria-label={`Select lead ${lead.name}`}
                         data-ocid={`leads.row.checkbox.${idx + 1}`}
                         className="border-border"
                       />
@@ -388,16 +449,31 @@ export function AdminLeads() {
                         </div>
                         <div className="min-w-0">
                           <p className="font-medium text-foreground text-sm truncate max-w-[140px]">
-                            {lead.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
                             {lead.name}
                           </p>
+                          {lead.monthlyBill && (
+                            <p className="text-xs text-muted-foreground">
+                              ₹{lead.monthlyBill}/mo
+                            </p>
+                          )}
                         </div>
                       </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                      {lead.company}
+                      <div className="space-y-0.5">
+                        {lead.mobileNo && (
+                          <div className="flex items-center gap-1 text-xs">
+                            <Phone className="w-3 h-3 shrink-0" />
+                            {lead.mobileNo}
+                          </div>
+                        )}
+                        {(lead.city || lead.state) && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground/70">
+                            <MapPin className="w-3 h-3 shrink-0" />
+                            {[lead.city, lead.state].filter(Boolean).join(", ")}
+                          </div>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {stage && (
@@ -463,15 +539,18 @@ export function AdminLeads() {
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeleteLead_(lead.id)}
-                          data-ocid={`leads.delete_button.${idx + 1}`}
-                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
+                        {/* Only arpit2127 can delete */}
+                        {isArpit && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeleteLead_(lead.id)}
+                            data-ocid={`leads.delete_button.${idx + 1}`}
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </motion.tr>
@@ -499,109 +578,142 @@ export function AdminLeads() {
         </div>
       )}
 
-      {/* Add/Edit Lead Dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+      {/* Add Lead Dialog (shared component) */}
+      <AddLeadDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onSubmit={handleAddSubmit}
+        stages={stages}
+        title="Add New Lead"
+        submitLabel="Add Lead"
+      />
+
+      {/* Upload CSV Dialog */}
+      <LeadUploadDialog
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        onImport={handleImport}
+      />
+
+      {/* Edit Lead Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent
           className="max-w-lg bg-card border-border"
-          data-ocid="leads.dialog"
+          data-ocid="leads.edit.dialog"
         >
           <DialogHeader>
             <DialogTitle className="font-display text-lg">
-              {editLead ? "Edit Lead" : "Add New Lead"}
+              Edit Lead
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
-                <Label
-                  htmlFor="lead-title"
-                  className="text-sm text-muted-foreground mb-1.5 block"
-                >
-                  Lead Title <span className="text-destructive">*</span>
+                <Label className="text-sm text-muted-foreground mb-1.5 block">
+                  Name <span className="text-destructive">*</span>
                 </Label>
                 <Input
-                  id="lead-title"
-                  value={form.title}
+                  value={editForm.name}
                   onChange={(e) =>
-                    setForm((p) => ({ ...p, title: e.target.value }))
-                  }
-                  placeholder="e.g. Enterprise Software Deal"
-                  required
-                  className="bg-secondary border-border"
-                  data-ocid="leads.title.input"
-                />
-              </div>
-              <div className="col-span-2">
-                <Label
-                  htmlFor="contact-name"
-                  className="text-sm text-muted-foreground mb-1.5 block"
-                >
-                  Contact Name <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="contact-name"
-                  value={form.name}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, name: e.target.value }))
+                    setEditForm((p) => ({ ...p, name: e.target.value }))
                   }
                   placeholder="Full name"
                   required
                   className="bg-secondary border-border"
-                  data-ocid="leads.name.input"
+                  data-ocid="leads.edit.name.input"
                 />
               </div>
               <div>
-                <Label
-                  htmlFor="lead-email"
-                  className="text-sm text-muted-foreground mb-1.5 block"
-                >
-                  Email
+                <Label className="text-sm text-muted-foreground mb-1.5 block">
+                  Mobile No
                 </Label>
                 <Input
-                  id="lead-email"
-                  type="email"
-                  value={form.email}
+                  value={editForm.mobileNo}
                   onChange={(e) =>
-                    setForm((p) => ({ ...p, email: e.target.value }))
-                  }
-                  placeholder="email@company.com"
-                  className="bg-secondary border-border"
-                  data-ocid="leads.email.input"
-                />
-              </div>
-              <div>
-                <Label
-                  htmlFor="lead-phone"
-                  className="text-sm text-muted-foreground mb-1.5 block"
-                >
-                  Phone
-                </Label>
-                <Input
-                  id="lead-phone"
-                  value={form.phone}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, phone: e.target.value }))
+                    setEditForm((p) => ({ ...p, mobileNo: e.target.value }))
                   }
                   placeholder="+91 98765 43210"
                   className="bg-secondary border-border"
+                  data-ocid="leads.edit.mobileno.input"
+                />
+              </div>
+              <div>
+                <Label className="text-sm text-muted-foreground mb-1.5 block">
+                  Monthly Bill
+                </Label>
+                <Input
+                  value={editForm.monthlyBill}
+                  onChange={(e) =>
+                    setEditForm((p) => ({ ...p, monthlyBill: e.target.value }))
+                  }
+                  placeholder="e.g. 5000"
+                  className="bg-secondary border-border"
+                  data-ocid="leads.edit.monthlybill.input"
                 />
               </div>
               <div className="col-span-2">
-                <Label
-                  htmlFor="lead-company"
-                  className="text-sm text-muted-foreground mb-1.5 block"
-                >
-                  Company
+                <Label className="text-sm text-muted-foreground mb-1.5 block">
+                  Address
                 </Label>
                 <Input
-                  id="lead-company"
-                  value={form.company}
+                  value={editForm.address}
                   onChange={(e) =>
-                    setForm((p) => ({ ...p, company: e.target.value }))
+                    setEditForm((p) => ({ ...p, address: e.target.value }))
                   }
-                  placeholder="Company name"
+                  placeholder="Street, area, locality"
                   className="bg-secondary border-border"
-                  data-ocid="leads.company.input"
+                  data-ocid="leads.edit.address.input"
+                />
+              </div>
+              <div>
+                <Label className="text-sm text-muted-foreground mb-1.5 block">
+                  State
+                </Label>
+                <Input
+                  value={editForm.state}
+                  onChange={(e) =>
+                    setEditForm((p) => ({ ...p, state: e.target.value }))
+                  }
+                  placeholder="e.g. Maharashtra"
+                  className="bg-secondary border-border"
+                  data-ocid="leads.edit.state.input"
+                />
+              </div>
+              <div>
+                <Label className="text-sm text-muted-foreground mb-1.5 block">
+                  City
+                </Label>
+                <Input
+                  value={editForm.city}
+                  onChange={(e) =>
+                    setEditForm((p) => ({ ...p, city: e.target.value }))
+                  }
+                  placeholder="e.g. Mumbai"
+                  className="bg-secondary border-border"
+                  data-ocid="leads.edit.city.input"
+                />
+              </div>
+              <div className="col-span-2">
+                <Label className="text-sm text-muted-foreground mb-1.5 block">
+                  Appointed Date &amp; Time
+                </Label>
+                <Input
+                  type="datetime-local"
+                  value={
+                    editForm.appointedAt
+                      ? editForm.appointedAt.slice(0, 16)
+                      : ""
+                  }
+                  onChange={(e) =>
+                    setEditForm((p) => ({
+                      ...p,
+                      appointedAt: e.target.value
+                        ? new Date(e.target.value).toISOString()
+                        : "",
+                    }))
+                  }
+                  className="bg-secondary border-border"
+                  data-ocid="leads.edit.appointedat.input"
                 />
               </div>
               <div>
@@ -609,12 +721,14 @@ export function AdminLeads() {
                   Source
                 </Label>
                 <Select
-                  value={form.source}
-                  onValueChange={(v) => setForm((p) => ({ ...p, source: v }))}
+                  value={editForm.source}
+                  onValueChange={(v) =>
+                    setEditForm((p) => ({ ...p, source: v }))
+                  }
                 >
                   <SelectTrigger
                     className="bg-secondary border-border"
-                    data-ocid="leads.source.select"
+                    data-ocid="leads.edit.source.select"
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -632,12 +746,14 @@ export function AdminLeads() {
                   Stage
                 </Label>
                 <Select
-                  value={form.stageId}
-                  onValueChange={(v) => setForm((p) => ({ ...p, stageId: v }))}
+                  value={editForm.stageId}
+                  onValueChange={(v) =>
+                    setEditForm((p) => ({ ...p, stageId: v }))
+                  }
                 >
                   <SelectTrigger
                     className="bg-secondary border-border"
-                    data-ocid="leads.stage.select"
+                    data-ocid="leads.edit.stage.select"
                   >
                     <SelectValue placeholder="Select stage" />
                   </SelectTrigger>
@@ -655,17 +771,17 @@ export function AdminLeads() {
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => setAddOpen(false)}
-                data-ocid="leads.cancel_button"
+                onClick={() => setEditOpen(false)}
+                data-ocid="leads.edit.cancel_button"
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
                 className="bg-primary text-primary-foreground"
-                data-ocid="leads.submit_button"
+                data-ocid="leads.edit.save_button"
               >
-                {editLead ? "Save Changes" : "Add Lead"}
+                Save Changes
               </Button>
             </DialogFooter>
           </form>
@@ -726,39 +842,41 @@ export function AdminLeads() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete confirmation */}
-      <AlertDialog
-        open={!!deleteLead_}
-        onOpenChange={(o) => !o && setDeleteLead_(null)}
-      >
-        <AlertDialogContent
-          className="bg-card border-border"
-          data-ocid="leads.delete.dialog"
+      {/* Delete confirmation — only rendered when isArpit */}
+      {isArpit && (
+        <AlertDialog
+          open={!!deleteLead_}
+          onOpenChange={(o) => !o && setDeleteLead_(null)}
         >
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Lead</AlertDialogTitle>
-            <AlertDialogDescription className="text-muted-foreground">
-              Are you sure? This will delete the lead and all its notes and
-              follow-ups.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              className="border-border bg-secondary"
-              data-ocid="leads.delete.cancel_button"
-            >
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground"
-              data-ocid="leads.delete.confirm_button"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          <AlertDialogContent
+            className="bg-card border-border"
+            data-ocid="leads.delete.dialog"
+          >
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Lead</AlertDialogTitle>
+              <AlertDialogDescription className="text-muted-foreground">
+                Are you sure? This will delete the lead and all its notes and
+                follow-ups.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                className="border-border bg-secondary"
+                data-ocid="leads.delete.cancel_button"
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                className="bg-destructive text-destructive-foreground"
+                data-ocid="leads.delete.confirm_button"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }

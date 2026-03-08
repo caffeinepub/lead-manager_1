@@ -20,6 +20,10 @@ import { FSEDashboard } from "./pages/fse/FSEDashboard";
 import { FollowUpsPage } from "./pages/fse/FollowUpsPage";
 import { HODDashboard } from "./pages/hod/HODDashboard";
 import { HODTeam } from "./pages/hod/HODTeam";
+import { TeleCallerDashboard } from "./pages/telecaller/TeleCallerDashboard";
+import { TeleCallerUpload } from "./pages/telecaller/TeleCallerUpload";
+import { THODDashboard } from "./pages/thod/THODDashboard";
+import { THODTeam } from "./pages/thod/THODTeam";
 import { seedData } from "./utils/storage";
 
 // Seed data on load
@@ -35,6 +39,10 @@ function RoleRedirect() {
       navigate({ to: "/admin" });
     } else if (currentUser.role === "HOD") {
       navigate({ to: "/hod" });
+    } else if (currentUser.role === "TeleCaller") {
+      navigate({ to: "/telecaller" });
+    } else if (currentUser.role === "THOD") {
+      navigate({ to: "/thod" });
     } else {
       navigate({ to: "/fse" });
     }
@@ -143,6 +151,32 @@ const fseFollowUpsRoute = createRoute({
   component: FollowUpsPage,
 });
 
+// TeleCaller routes
+const teleCallerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/telecaller",
+  component: TeleCallerDashboard,
+});
+
+const teleCallerUploadRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/telecaller/upload",
+  component: TeleCallerUpload,
+});
+
+// THOD routes
+const thodRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/thod",
+  component: THODDashboard,
+});
+
+const thodTeamRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/thod/team",
+  component: THODTeam,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -154,6 +188,10 @@ const routeTree = rootRoute.addChildren([
   hodTeamRoute,
   fseRoute,
   fseFollowUpsRoute,
+  teleCallerRoute,
+  teleCallerUploadRoute,
+  thodRoute,
+  thodTeamRoute,
 ]);
 
 const router = createRouter({ routeTree });

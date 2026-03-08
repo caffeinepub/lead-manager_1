@@ -27,27 +27,36 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Activity,
-  Building2,
   Calendar,
+  CheckCircle,
   ChevronDown,
+  Clock,
   Download,
-  Mail,
+  MapPin,
   MessageSquare,
   Phone,
+  Plus,
   Send,
   TrendingUp,
+  Upload,
   UserCheck,
   Users,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import {
+  AddLeadDialog,
+  type LeadFormInput,
+} from "../../components/AddLeadDialog";
+import { LeadUploadDialog } from "../../components/LeadUploadDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useLMS } from "../../context/LMSContext";
 import type { Lead } from "../../types/lms";
 import { exportLeadsToCSV } from "../../utils/exportLeads";
 
 function formatDate(iso: string) {
+  if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -55,7 +64,49 @@ function formatDate(iso: string) {
   });
 }
 
+function formatDateLong(iso: string) {
+  return new Date(iso).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function getDateLabel(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const nextWeek = new Date(today);
+  nextWeek.setDate(today.getDate() + 7);
+  const followUpDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if (followUpDay < today) return "Overdue";
+  if (followUpDay.getTime() === today.getTime()) return "Today";
+  if (followUpDay.getTime() === tomorrow.getTime()) return "Tomorrow";
+  if (followUpDay < nextWeek) return "This Week";
+  return "Later";
+}
+
+const GROUP_ORDER = ["Overdue", "Today", "Tomorrow", "This Week", "Later"];
+const GROUP_COLORS: Record<string, string> = {
+  Overdue: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+  Today: "bg-primary/15 text-primary border-primary/30",
+  Tomorrow: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  "This Week": "bg-blue-500/15 text-blue-300 border-blue-500/30",
+  Later: "bg-secondary text-muted-foreground border-border",
+};
+
 function formatDateTime(iso: string) {
+  if (!iso) return "—";
   return new Date(iso).toLocaleString("en-US", {
     month: "short",
     day: "numeric",
@@ -84,10 +135,12 @@ export function HODDashboard() {
     users,
     notes,
     followUps,
+    addLead,
     assignLeadToFSE,
     getLeadNotes,
     addNote,
     getLeadFollowUps,
+    updateFollowUp,
   } = useLMS();
 
   // HOD only sees leads assigned to them
@@ -104,6 +157,9 @@ export function HODDashboard() {
   const [assignFSEId, setAssignFSEId] = useState("");
   const [noteText, setNoteText] = useState("");
 
+  const [addOpen, setAddOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+
   // Selection state for download
   const [hodSelectedIds, setHodSelectedIds] = useState<Set<string>>(new Set());
 
@@ -113,6 +169,37 @@ export function HODDashboard() {
     const unassigned = myLeads.filter((l) => !l.assignedToFSE).length;
     return { total, assigned, unassigned };
   }, [myLeads]);
+
+  // HOD follow-ups: all follow-ups for leads assigned to this HOD
+  const hodFollowUps = useMemo(() => {
+    return followUps
+      .filter((f) => {
+        const lead = leads.find((l) => l.id === f.leadId);
+        return lead?.assignedToHOD === currentUser?.id;
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
+      );
+  }, [followUps, leads, currentUser]);
+
+  const hodPending = hodFollowUps.filter((f) => !f.completed).length;
+  const hodCompleted = hodFollowUps.filter((f) => f.completed).length;
+
+  const hodGrouped = useMemo(() => {
+    const groups: Record<string, typeof hodFollowUps> = {};
+    for (const f of hodFollowUps) {
+      const label = getDateLabel(f.scheduledAt);
+      if (!groups[label]) groups[label] = [];
+      groups[label].push(f);
+    }
+    return groups;
+  }, [hodFollowUps]);
+
+  const handleToggleFollowUp = (id: string, completed: boolean) => {
+    updateFollowUp(id, { completed });
+    toast.success(completed ? "Marked as complete" : "Marked as pending");
+  };
 
   // Unified FSE activity feed: all notes + follow-ups for my leads, sorted by createdAt desc
   const activityFeed = useMemo(() => {
@@ -170,6 +257,55 @@ export function HODDashboard() {
   const getUser = (userId: string | null) =>
     userId ? users.find((u) => u.id === userId) : null;
   const getLead = (leadId: string) => leads.find((l) => l.id === leadId);
+
+  const handleAddSubmit = (data: LeadFormInput) => {
+    addLead({
+      title: data.name.trim(),
+      name: data.name.trim(),
+      mobileNo: data.mobileNo.trim(),
+      address: data.address.trim(),
+      monthlyBill: data.monthlyBill.trim(),
+      state: data.state.trim(),
+      city: data.city.trim(),
+      appointedAt: data.appointedAt,
+      source: data.source,
+      stageId: data.stageId || (stages[0]?.id ?? ""),
+      assignedToHOD: currentUser?.id ?? null,
+      assignedToFSE: null,
+      createdBy: currentUser?.id ?? "",
+      uploadedBy: null,
+    });
+    toast.success("Lead added");
+    setAddOpen(false);
+  };
+
+  const handleImport = (importedLeads: Partial<LeadFormInput>[]) => {
+    const firstStageId = stages[0]?.id ?? "";
+    let count = 0;
+    for (const row of importedLeads) {
+      if (!row.name?.trim()) continue;
+      addLead({
+        title: row.name.trim(),
+        name: row.name.trim(),
+        mobileNo: row.mobileNo?.trim() ?? "",
+        address: row.address?.trim() ?? "",
+        monthlyBill: row.monthlyBill?.trim() ?? "",
+        state: row.state?.trim() ?? "",
+        city: row.city?.trim() ?? "",
+        appointedAt: row.appointedAt ?? "",
+        source: row.source?.trim() || "Other",
+        stageId: firstStageId,
+        assignedToHOD: currentUser?.id ?? null,
+        assignedToFSE: null,
+        createdBy: currentUser?.id ?? "",
+        uploadedBy: currentUser?.id ?? null,
+      });
+      count++;
+    }
+    if (count > 0) {
+      toast.success(`Imported ${count} lead${count !== 1 ? "s" : ""}`);
+    }
+  };
 
   const handleAssignFSE = () => {
     if (!assignFSELeadId) return;
@@ -231,13 +367,34 @@ export function HODDashboard() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto animate-fade-in">
-      <div className="mb-6">
-        <h1 className="font-display text-2xl font-bold text-foreground">
-          HOD Dashboard
-        </h1>
-        <p className="text-muted-foreground text-sm mt-0.5">
-          Welcome, {currentUser?.name} — leads assigned to you and your team
-        </p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-foreground">
+            HOD Dashboard
+          </h1>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            Welcome, {currentUser?.name} — leads assigned to you and your team
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setUploadOpen(true)}
+            className="border-border bg-secondary hover:bg-secondary/70 gap-1.5"
+            data-ocid="hod.upload_button"
+          >
+            <Upload className="w-4 h-4" />
+            Upload CSV
+          </Button>
+          <Button
+            onClick={() => setAddOpen(true)}
+            className="bg-primary text-primary-foreground hover:opacity-90"
+            data-ocid="hod.add_button"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Lead
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -309,6 +466,19 @@ export function HODDashboard() {
               </span>
             )}
           </TabsTrigger>
+          <TabsTrigger
+            value="followups"
+            className="flex items-center gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            data-ocid="hod.tabs.followups.tab"
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            Follow-ups
+            {hodPending > 0 && (
+              <span className="ml-1 text-[10px] bg-foreground/10 px-1.5 py-0.5 rounded-full">
+                {hodPending}
+              </span>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         {/* ── My Leads Tab ── */}
@@ -323,7 +493,7 @@ export function HODDashboard() {
                 No leads assigned to you yet
               </p>
               <p className="text-xs mt-1">
-                Ask your Admin to assign leads to you
+                Ask your Admin to assign leads, or add one yourself
               </p>
             </div>
           ) : (
@@ -425,11 +595,13 @@ export function HODDashboard() {
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0 flex-1">
                               <CardTitle className="font-display text-sm font-semibold text-foreground truncate">
-                                {lead.title}
-                              </CardTitle>
-                              <p className="text-xs text-muted-foreground mt-0.5">
                                 {lead.name}
-                              </p>
+                              </CardTitle>
+                              {lead.monthlyBill && (
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  ₹{lead.monthlyBill}/mo
+                                </p>
+                              )}
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
                               {stage && (
@@ -449,7 +621,7 @@ export function HODDashboard() {
                               <Checkbox
                                 checked={isSelected}
                                 onCheckedChange={() => toggleSelect(lead.id)}
-                                aria-label={`Select lead ${lead.title}`}
+                                aria-label={`Select lead ${lead.name}`}
                                 data-ocid={`hod.lead.checkbox.${idx + 1}`}
                                 className="border-border"
                               />
@@ -457,16 +629,20 @@ export function HODDashboard() {
                           </div>
                         </CardHeader>
                         <CardContent className="space-y-2 pt-0 flex-1 flex flex-col">
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Building2 className="w-3 h-3 shrink-0" />
-                            <span className="truncate">
-                              {lead.company || "—"}
-                            </span>
-                          </div>
-                          {lead.email && (
+                          {lead.mobileNo && (
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <Mail className="w-3 h-3 shrink-0" />
-                              <span className="truncate">{lead.email}</span>
+                              <Phone className="w-3 h-3 shrink-0" />
+                              <span className="truncate">{lead.mobileNo}</span>
+                            </div>
+                          )}
+                          {(lead.city || lead.state) && (
+                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <MapPin className="w-3 h-3 shrink-0" />
+                              <span className="truncate">
+                                {[lead.city, lead.state]
+                                  .filter(Boolean)
+                                  .join(", ")}
+                              </span>
                             </div>
                           )}
                           {/* Assigned FSE */}
@@ -600,7 +776,7 @@ export function HODDashboard() {
                                 on
                               </span>
                               <span className="text-xs font-medium text-primary truncate max-w-[140px]">
-                                {lead.title}
+                                {lead.name}
                               </span>
                             </>
                           )}
@@ -651,7 +827,172 @@ export function HODDashboard() {
             </div>
           )}
         </TabsContent>
+        {/* ── Follow-ups Tab ── */}
+        <TabsContent value="followups">
+          {/* Summary mini-cards */}
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <Card className="bg-card border-border shadow-card">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                  <Calendar className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Pending</p>
+                  <p className="font-display text-xl font-bold text-amber-400">
+                    {hodPending}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="bg-card border-border shadow-card">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Completed</p>
+                  <p className="font-display text-xl font-bold text-emerald-400">
+                    {hodCompleted}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {hodFollowUps.length === 0 ? (
+            <div
+              data-ocid="hod.followups.empty_state"
+              className="text-center py-16 text-muted-foreground"
+            >
+              <Calendar className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium">No follow-ups scheduled</p>
+              <p className="text-xs mt-1">
+                Follow-ups added by FSEs for your leads will appear here
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-6" data-ocid="hod.followups.list">
+              {GROUP_ORDER.filter((g) => hodGrouped[g]?.length).map(
+                (groupLabel) => {
+                  const items = hodGrouped[groupLabel] ?? [];
+                  let globalIndex = 0;
+                  for (const g of GROUP_ORDER) {
+                    if (g === groupLabel) break;
+                    globalIndex += hodGrouped[g]?.length ?? 0;
+                  }
+                  return (
+                    <div key={groupLabel}>
+                      <div className="flex items-center gap-3 mb-3">
+                        <Badge
+                          variant="outline"
+                          className={GROUP_COLORS[groupLabel]}
+                        >
+                          {groupLabel}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {items[0] && formatDateLong(items[0].scheduledAt)}
+                        </span>
+                      </div>
+                      <Card className="bg-card border-border shadow-card overflow-hidden">
+                        <CardContent className="p-3 space-y-2">
+                          {items.map((f, i) => {
+                            const itemIndex = globalIndex + i;
+                            const lead = leads.find((l) => l.id === f.leadId);
+                            const leadTitle =
+                              lead?.title ?? lead?.name ?? "Unknown Lead";
+                            return (
+                              <motion.div
+                                key={f.id}
+                                initial={{ opacity: 0, x: -8 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: itemIndex * 0.04 }}
+                                data-ocid={`hod.followup.item.${itemIndex + 1}`}
+                                className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all ${
+                                  f.completed
+                                    ? "bg-secondary/20 border-border/40 opacity-60"
+                                    : "bg-card border-border shadow-card"
+                                }`}
+                              >
+                                <Checkbox
+                                  checked={f.completed}
+                                  onCheckedChange={(checked) =>
+                                    handleToggleFollowUp(
+                                      f.id,
+                                      checked as boolean,
+                                    )
+                                  }
+                                  className="mt-0.5 shrink-0"
+                                  data-ocid={`hod.followup.checkbox.${itemIndex + 1}`}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p
+                                    className={`text-sm font-medium truncate ${f.completed ? "line-through text-muted-foreground" : "text-foreground"}`}
+                                  >
+                                    {leadTitle}
+                                  </p>
+                                  {f.description && (
+                                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                                      {f.description}
+                                    </p>
+                                  )}
+                                  <div className="flex items-center gap-1.5 mt-1.5">
+                                    <Clock className="w-3 h-3 text-muted-foreground" />
+                                    <span className="text-xs text-muted-foreground">
+                                      {formatTime(f.scheduledAt)}
+                                    </span>
+                                    {f.completed && (
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                      >
+                                        Done
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                                {!f.completed && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                      handleToggleFollowUp(f.id, true)
+                                    }
+                                    data-ocid={`hod.followup.complete_button.${itemIndex + 1}`}
+                                    className="h-7 px-2 text-xs text-muted-foreground hover:text-emerald-400 shrink-0"
+                                  >
+                                    <CheckCircle className="w-4 h-4" />
+                                  </Button>
+                                )}
+                              </motion.div>
+                            );
+                          })}
+                        </CardContent>
+                      </Card>
+                    </div>
+                  );
+                },
+              )}
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
+
+      {/* Add Lead Dialog */}
+      <AddLeadDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onSubmit={handleAddSubmit}
+        stages={stages}
+        title="Add New Lead"
+        submitLabel="Add Lead"
+      />
+
+      {/* Upload CSV Dialog */}
+      <LeadUploadDialog
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        onImport={handleImport}
+      />
 
       {/* Assign FSE Dialog */}
       <Dialog
@@ -720,32 +1061,46 @@ export function HODDashboard() {
             <>
               <DialogHeader>
                 <DialogTitle className="font-display text-lg">
-                  {selectedLead.title}
+                  {selectedLead.name}
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
-                {/* Lead info grid including FSE assignment */}
+                {/* Lead info grid */}
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="flex items-center gap-2 text-muted-foreground">
-                    <Users className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">{selectedLead.name}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Building2 className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">
-                      {selectedLead.company || "—"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Mail className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">
-                      {selectedLead.email || "—"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
                     <Phone className="w-3.5 h-3.5 shrink-0" />
-                    <span>{selectedLead.phone || "—"}</span>
+                    <span className="truncate">
+                      {selectedLead.mobileNo || "—"}
+                    </span>
                   </div>
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <MapPin className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">
+                      {[selectedLead.city, selectedLead.state]
+                        .filter(Boolean)
+                        .join(", ") || "—"}
+                    </span>
+                  </div>
+                  {selectedLead.address && (
+                    <div className="col-span-2 flex items-start gap-2 text-muted-foreground">
+                      <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span>{selectedLead.address}</span>
+                    </div>
+                  )}
+                  {selectedLead.monthlyBill && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <span className="text-xs font-medium text-foreground">
+                        Monthly Bill:
+                      </span>
+                      <span>₹{selectedLead.monthlyBill}</span>
+                    </div>
+                  )}
+                  {selectedLead.appointedAt && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Calendar className="w-3.5 h-3.5 shrink-0" />
+                      <span>{formatDateTime(selectedLead.appointedAt)}</span>
+                    </div>
+                  )}
                   {/* Assigned FSE — shown prominently in detail view */}
                   <div className="col-span-2 flex items-center gap-2 p-2 rounded-lg bg-secondary/40 border border-border/50">
                     <UserCheck className="w-3.5 h-3.5 text-muted-foreground shrink-0" />

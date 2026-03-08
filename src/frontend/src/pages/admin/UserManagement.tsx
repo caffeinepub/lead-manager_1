@@ -355,6 +355,8 @@ export function UserManagement() {
                   <SelectContent className="bg-popover border-border">
                     <SelectItem value="HOD">HOD</SelectItem>
                     <SelectItem value="FSE">FSE</SelectItem>
+                    <SelectItem value="TeleCaller">TeleCaller</SelectItem>
+                    <SelectItem value="THOD">THOD</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

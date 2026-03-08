@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   BarChart2,
   Kanban,
+  PhoneCall,
   TrendingUp,
   UserCog,
   Users,
@@ -29,6 +30,8 @@ export function AdminDashboard() {
     const totalUsers = users.length;
     const hods = users.filter((u) => u.role === "HOD").length;
     const fses = users.filter((u) => u.role === "FSE").length;
+    const teleCallers = users.filter((u) => u.role === "TeleCaller").length;
+    const thods = users.filter((u) => u.role === "THOD").length;
     const totalLeads = leads.length;
     const assignedLeads = leads.filter((l) => l.assignedToHOD).length;
     const unassignedLeads = leads.filter((l) => !l.assignedToHOD).length;
@@ -36,6 +39,8 @@ export function AdminDashboard() {
       totalUsers,
       hods,
       fses,
+      teleCallers,
+      thods,
       totalLeads,
       assignedLeads,
       unassignedLeads,
@@ -84,6 +89,22 @@ export function AdminDashboard() {
       ocid: "admin.fses.card",
     },
     {
+      label: "TeleCallers",
+      value: stats.teleCallers,
+      icon: PhoneCall,
+      color: "text-orange-400",
+      bgColor: "bg-orange-400/10",
+      ocid: "admin.telecallers.card",
+    },
+    {
+      label: "THODs",
+      value: stats.thods,
+      icon: Users,
+      color: "text-rose-400",
+      bgColor: "bg-rose-400/10",
+      ocid: "admin.thods.card",
+    },
+    {
       label: "Total Leads",
       value: stats.totalLeads,
       icon: TrendingUp,
@@ -121,7 +142,7 @@ export function AdminDashboard() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-6">
         {STAT_CARDS.map((card, i) => (
           <motion.div
             key={card.label}
@@ -283,7 +304,8 @@ export function AdminDashboard() {
                       {lead.title}
                     </p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {lead.company} · {lead.name}
+                      {[lead.city, lead.state].filter(Boolean).join(", ") ||
+                        lead.name}
                     </p>
                   </div>
                   <span className="text-xs text-muted-foreground shrink-0 hidden sm:block">

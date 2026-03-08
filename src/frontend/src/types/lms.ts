@@ -1,5 +1,5 @@
 // Role types
-export type Role = "Admin" | "HOD" | "FSE";
+export type Role = "Admin" | "HOD" | "FSE" | "TeleCaller" | "THOD";
 
 // User
 export interface User {
@@ -25,14 +25,18 @@ export interface Lead {
   id: string;
   title: string;
   name: string;
-  email: string;
-  phone: string;
-  company: string;
+  mobileNo: string;
+  address: string;
+  monthlyBill: string;
+  state: string;
+  city: string;
+  appointedAt: string; // ISO datetime string
   source: string;
   stageId: string;
   assignedToHOD: string | null;
   assignedToFSE: string | null;
   createdBy: string;
+  uploadedBy: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -98,6 +102,8 @@ export const ROLE_COLORS: Record<Role, string> = {
   Admin: "bg-purple-500/15 text-purple-300 border-purple-500/30",
   HOD: "bg-blue-500/15 text-blue-300 border-blue-500/30",
   FSE: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  TeleCaller: "bg-orange-500/15 text-orange-300 border-orange-500/30",
+  THOD: "bg-rose-500/15 text-rose-300 border-rose-500/30",
 };
 
 // Legacy support types (kept for compatibility with old components that may reference these)

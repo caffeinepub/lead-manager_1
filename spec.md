@@ -2,73 +2,31 @@
 
 ## Current State
 
-- Full role-based LMS with Admin, HOD, FSE roles stored in localStorage
-- Admin: user management, stage management, lead management with HOD assignment
-- HOD: sees only leads assigned to them, assigns leads to FSEs, FSE activity feed
-- FSE: updates assigned leads, adds notes, schedules follow-ups with date-wise list
-- Data model: User, Lead, Stage, Note, FollowUp — all in localStorage
-- AuthContext handles login/logout; no password change feature exists
-- No Excel/CSV export feature anywhere in the app
+Full-featured Lead Management System with role-based access (Admin, HOD, FSE, TeleCaller, THOD). Data is stored in localStorage. The FSE role has a dedicated "Follow-ups" page (`/fse/followups`) with date-wise grouping (Overdue, Today, Tomorrow, This Week, Later) and mark-complete functionality. The HOD dashboard has two tabs: "My Leads" and "FSE Activity" but no follow-up tab for HOD's own scheduled follow-ups.
 
 ## Requested Changes (Diff)
 
 ### Add
-
-1. **Excel Download for Admin (AdminLeads.tsx)**
-   - "Download Excel" button in the header area of the leads table
-   - Dropdown or two-button approach: "Download All" and "Download Selected"
-   - For "Download Selected": checkboxes on each lead row to multi-select; a selection count badge near the button
-   - Export columns: Title, Contact Name, Email, Phone, Company, Source, Stage, Assigned HOD, Assigned FSE, Created At
-   - Use client-side CSV/Excel generation (no external library needed — build a CSV blob and trigger download with `.xlsx` extension or proper CSV)
-
-2. **Excel Download for HOD (HODDashboard.tsx)**
-   - Similar "Download Excel" button in the My Leads tab header
-   - "Download All" (all myLeads) and "Download Selected" (checkboxes on lead cards or a separate list mode)
-   - Same export columns as Admin; HOD-visible fields only (no ability to see leads outside their scope)
-
-3. **Change Password for all roles**
-   - A "Change Password" option accessible from the top navigation/profile area (Layout.tsx or a profile dropdown)
-   - Dialog/modal with: Current Password, New Password, Confirm New Password fields
-   - Validates current password matches stored hash (btoa comparison)
-   - On success: updates passwordHash in localStorage via saveUsers, shows toast, closes dialog
-   - Available to Admin, HOD, and FSE (all logged-in users)
+- A third tab "Follow-ups" to the HOD Dashboard showing all follow-ups for leads assigned to that HOD, grouped by date (same grouping logic as the FSE FollowUpsPage: Overdue, Today, Tomorrow, This Week, Later)
+- Each follow-up item shows: lead name, description, scheduled time, and a mark-complete toggle/checkbox
+- Summary stats (pending count, completed count) at the top of the HOD follow-ups tab
 
 ### Modify
-
-- **Layout.tsx**: Add a user profile dropdown or button in the top bar that includes "Change Password" and existing "Logout"
-- **AdminLeads.tsx**: Add checkboxes column + download button with selected/all options
-- **HODDashboard.tsx**: Add checkboxes on lead cards or a list toggle + download button
+- HOD Dashboard: add a third `TabsTrigger` and `TabsContent` for "Follow-ups" with a count badge
+- HOD follow-ups should include all follow-ups on leads that `assignedToHOD === currentUser.id`, not just by `assignedTo` user
 
 ### Remove
-
-Nothing removed.
+- Nothing
 
 ## Implementation Plan
 
-1. Create a `useExcelExport` utility hook or helper function in `src/utils/exportLeads.ts` that:
-   - Takes an array of leads + supporting data (users, stages)
-   - Builds CSV content with all relevant columns
-   - Triggers browser download as `.csv` file (named `leads-export-YYYY-MM-DD.csv`)
-
-2. Update `AdminLeads.tsx`:
-   - Add checkbox column to the leads table (select-all in header, per-row checkboxes)
-   - Track `selectedIds: Set<string>` state
-   - Add "Download Excel" button (dropdown with "Download All" / "Download Selected") in header
-
-3. Update `HODDashboard.tsx` My Leads tab:
-   - Add per-card checkbox (small, top-right of card) and a "select all" toggle
-   - Add "Download Excel" button in the My Leads tab header
-
-4. Update `AuthContext.tsx`:
-   - Add `changePassword(currentPassword: string, newPassword: string): boolean` function to context
-
-5. Create `ChangePasswordDialog.tsx` component:
-   - Dialog with current/new/confirm password inputs
-   - Calls `changePassword` from AuthContext
-   - Shows success/error toast
-
-6. Update `Layout.tsx`:
-   - Add user avatar/name button in top bar that opens a dropdown
-   - Dropdown items: "Change Password" (opens ChangePasswordDialog) + "Logout"
-
-7. Validate and build
+1. In `HODDashboard.tsx`:
+   - Import `updateFollowUp` from LMSContext
+   - Derive `hodFollowUps`: all followUps where `leads.find(l => l.id === f.leadId)?.assignedToHOD === currentUser.id`, sorted by scheduledAt ascending
+   - Compute `hodPending` and `hodCompleted` counts
+   - Add a third tab trigger "Follow-ups" with a count badge (pending count)
+   - Add a third TabsContent with:
+     - Two summary stat cards (Pending, Completed) matching the FSE FollowUpsPage style
+     - Empty state if no follow-ups
+     - Date-grouped list using the same GROUP_ORDER and GROUP_COLORS as FollowUpsPage
+     - Each item: lead name, description, scheduled time, checkbox to mark complete

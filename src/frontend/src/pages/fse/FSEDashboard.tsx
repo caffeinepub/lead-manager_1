@@ -19,24 +19,30 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Building2,
   Calendar,
   Clock,
-  Mail,
+  MapPin,
   MessageSquare,
   Phone,
   Plus,
   Send,
   TrendingUp,
+  Upload,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { type FormEvent, useMemo, useState } from "react";
 import { toast } from "sonner";
+import {
+  AddLeadDialog,
+  type LeadFormInput,
+} from "../../components/AddLeadDialog";
+import { LeadUploadDialog } from "../../components/LeadUploadDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useLMS } from "../../context/LMSContext";
 import { LEAD_SOURCES, type Lead, SOURCE_COLORS } from "../../types/lms";
 
 function formatDateTime(iso: string) {
+  if (!iso) return "—";
   return new Date(iso).toLocaleString("en-US", {
     month: "short",
     day: "numeric",
@@ -68,11 +74,11 @@ export function FSEDashboard() {
     addNote,
     updateLead,
     addFollowUp,
+    addLead,
     getLeadFollowUps,
   } = useLMS();
 
   // FSE role restriction: only show leads explicitly assigned to this FSE user.
-  // This ensures FSEs cannot see leads belonging to other FSEs or unassigned leads.
   const myLeads = useMemo(() => {
     return leads.filter((l) => l.assignedToFSE === currentUser?.id);
   }, [leads, currentUser]);
@@ -81,16 +87,31 @@ export function FSEDashboard() {
   const [noteText, setNoteText] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState<{
-    email: string;
-    phone: string;
-    company: string;
+    mobileNo: string;
+    address: string;
+    monthlyBill: string;
+    state: string;
+    city: string;
+    appointedAt: string;
     stageId: string;
     source: string;
-  }>({ email: "", phone: "", company: "", stageId: "", source: "" });
+  }>({
+    mobileNo: "",
+    address: "",
+    monthlyBill: "",
+    state: "",
+    city: "",
+    appointedAt: "",
+    stageId: "",
+    source: "",
+  });
 
   const [followUpOpen, setFollowUpOpen] = useState(false);
   const [followUpForm, setFollowUpForm] =
     useState<FollowUpFormData>(defaultFollowUpForm);
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   const getStage = (stageId: string) => stages.find((s) => s.id === stageId);
   const getUser = (userId: string | null) =>
@@ -105,9 +126,12 @@ export function FSEDashboard() {
     setSelectedLead(lead);
     setEditMode(false);
     setEditForm({
-      email: lead.email,
-      phone: lead.phone,
-      company: lead.company,
+      mobileNo: lead.mobileNo ?? "",
+      address: lead.address ?? "",
+      monthlyBill: lead.monthlyBill ?? "",
+      state: lead.state ?? "",
+      city: lead.city ?? "",
+      appointedAt: lead.appointedAt ?? "",
       stageId: lead.stageId,
       source: lead.source,
     });
@@ -117,15 +141,67 @@ export function FSEDashboard() {
   const handleSaveEdit = () => {
     if (!selectedLead) return;
     updateLead(selectedLead.id, {
-      email: editForm.email,
-      phone: editForm.phone,
-      company: editForm.company,
+      mobileNo: editForm.mobileNo,
+      address: editForm.address,
+      monthlyBill: editForm.monthlyBill,
+      state: editForm.state,
+      city: editForm.city,
+      appointedAt: editForm.appointedAt,
       stageId: editForm.stageId,
       source: editForm.source,
     });
     setSelectedLead((prev) => (prev ? { ...prev, ...editForm } : null));
     setEditMode(false);
     toast.success("Lead updated");
+  };
+
+  const handleAddSubmit = (data: LeadFormInput) => {
+    addLead({
+      title: data.name.trim(),
+      name: data.name.trim(),
+      mobileNo: data.mobileNo.trim(),
+      address: data.address.trim(),
+      monthlyBill: data.monthlyBill.trim(),
+      state: data.state.trim(),
+      city: data.city.trim(),
+      appointedAt: data.appointedAt,
+      source: data.source,
+      stageId: data.stageId || (stages[0]?.id ?? ""),
+      assignedToHOD: null,
+      assignedToFSE: currentUser?.id ?? null,
+      createdBy: currentUser?.id ?? "",
+      uploadedBy: null,
+    });
+    toast.success("Lead added and assigned to you");
+    setAddOpen(false);
+  };
+
+  const handleImport = (importedLeads: Partial<LeadFormInput>[]) => {
+    const firstStageId = stages[0]?.id ?? "";
+    let count = 0;
+    for (const row of importedLeads) {
+      if (!row.name?.trim()) continue;
+      addLead({
+        title: row.name.trim(),
+        name: row.name.trim(),
+        mobileNo: row.mobileNo?.trim() ?? "",
+        address: row.address?.trim() ?? "",
+        monthlyBill: row.monthlyBill?.trim() ?? "",
+        state: row.state?.trim() ?? "",
+        city: row.city?.trim() ?? "",
+        appointedAt: row.appointedAt ?? "",
+        source: row.source?.trim() || "Other",
+        stageId: firstStageId,
+        assignedToHOD: null,
+        assignedToFSE: currentUser?.id ?? null,
+        createdBy: currentUser?.id ?? "",
+        uploadedBy: currentUser?.id ?? null,
+      });
+      count++;
+    }
+    if (count > 0) {
+      toast.success(`Imported ${count} lead${count !== 1 ? "s" : ""}`);
+    }
   };
 
   const handleAddNote = (e: FormEvent) => {
@@ -161,14 +237,35 @@ export function FSEDashboard() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto animate-fade-in">
-      <div className="mb-6">
-        <h1 className="font-display text-2xl font-bold text-foreground">
-          My Leads
-        </h1>
-        <p className="text-muted-foreground text-sm mt-0.5">
-          Welcome, {currentUser?.name} — {myLeads.length} lead
-          {myLeads.length !== 1 ? "s" : ""} assigned to you
-        </p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-foreground">
+            My Leads
+          </h1>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            Welcome, {currentUser?.name} — {myLeads.length} lead
+            {myLeads.length !== 1 ? "s" : ""} assigned to you
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setUploadOpen(true)}
+            className="border-border bg-secondary hover:bg-secondary/70 gap-1.5"
+            data-ocid="fse.upload_button"
+          >
+            <Upload className="w-4 h-4" />
+            Upload CSV
+          </Button>
+          <Button
+            onClick={() => setAddOpen(true)}
+            className="bg-primary text-primary-foreground hover:opacity-90"
+            data-ocid="fse.add_button"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Lead
+          </Button>
+        </div>
       </div>
 
       {myLeads.length === 0 ? (
@@ -178,7 +275,9 @@ export function FSEDashboard() {
         >
           <TrendingUp className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p className="text-sm font-medium">No leads assigned to you yet</p>
-          <p className="text-xs mt-1">Contact your HOD to get leads assigned</p>
+          <p className="text-xs mt-1">
+            Contact your HOD to get leads assigned, or add one yourself
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -202,11 +301,13 @@ export function FSEDashboard() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <CardTitle className="font-display text-sm font-semibold text-foreground truncate">
-                          {lead.title}
-                        </CardTitle>
-                        <p className="text-xs text-muted-foreground mt-0.5">
                           {lead.name}
-                        </p>
+                        </CardTitle>
+                        {lead.monthlyBill && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            ₹{lead.monthlyBill}/mo
+                          </p>
+                        )}
                       </div>
                       {stage && (
                         <Badge
@@ -224,14 +325,18 @@ export function FSEDashboard() {
                     </div>
                   </CardHeader>
                   <CardContent className="pt-0 space-y-1.5">
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Building2 className="w-3 h-3 shrink-0" />
-                      <span className="truncate">{lead.company || "—"}</span>
-                    </div>
-                    {lead.phone && (
+                    {lead.mobileNo && (
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Phone className="w-3 h-3 shrink-0" />
-                        <span>{lead.phone}</span>
+                        <span>{lead.mobileNo}</span>
+                      </div>
+                    )}
+                    {(lead.city || lead.state) && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <MapPin className="w-3 h-3 shrink-0" />
+                        <span className="truncate">
+                          {[lead.city, lead.state].filter(Boolean).join(", ")}
+                        </span>
                       </div>
                     )}
                     <div className="flex items-center gap-3 pt-1">
@@ -251,6 +356,23 @@ export function FSEDashboard() {
         </div>
       )}
 
+      {/* Add Lead Dialog */}
+      <AddLeadDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onSubmit={handleAddSubmit}
+        stages={stages}
+        title="Add New Lead"
+        submitLabel="Add Lead"
+      />
+
+      {/* Upload CSV Dialog */}
+      <LeadUploadDialog
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        onImport={handleImport}
+      />
+
       {/* Lead Detail Dialog */}
       <Dialog
         open={!!selectedLead}
@@ -268,7 +390,7 @@ export function FSEDashboard() {
                   <DialogHeader>
                     <div className="flex items-start justify-between gap-2">
                       <DialogTitle className="font-display text-lg">
-                        {selectedLead.title}
+                        {selectedLead.name}
                       </DialogTitle>
                       {stage && (
                         <Badge
@@ -296,47 +418,105 @@ export function FSEDashboard() {
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <Label className="text-xs text-muted-foreground mb-1 block">
-                              Email
+                              Mobile No
                             </Label>
                             <Input
-                              value={editForm.email}
+                              value={editForm.mobileNo}
                               onChange={(e) =>
                                 setEditForm((p) => ({
                                   ...p,
-                                  email: e.target.value,
+                                  mobileNo: e.target.value,
                                 }))
                               }
                               className="bg-secondary border-border h-8 text-sm"
+                              data-ocid="lead.edit.mobileno.input"
                             />
                           </div>
                           <div>
                             <Label className="text-xs text-muted-foreground mb-1 block">
-                              Phone
+                              Monthly Bill
                             </Label>
                             <Input
-                              value={editForm.phone}
+                              value={editForm.monthlyBill}
                               onChange={(e) =>
                                 setEditForm((p) => ({
                                   ...p,
-                                  phone: e.target.value,
+                                  monthlyBill: e.target.value,
                                 }))
                               }
                               className="bg-secondary border-border h-8 text-sm"
+                              data-ocid="lead.edit.monthlybill.input"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <Label className="text-xs text-muted-foreground mb-1 block">
+                              Address
+                            </Label>
+                            <Input
+                              value={editForm.address}
+                              onChange={(e) =>
+                                setEditForm((p) => ({
+                                  ...p,
+                                  address: e.target.value,
+                                }))
+                              }
+                              className="bg-secondary border-border h-8 text-sm"
+                              data-ocid="lead.edit.address.input"
                             />
                           </div>
                           <div>
                             <Label className="text-xs text-muted-foreground mb-1 block">
-                              Company
+                              State
                             </Label>
                             <Input
-                              value={editForm.company}
+                              value={editForm.state}
                               onChange={(e) =>
                                 setEditForm((p) => ({
                                   ...p,
-                                  company: e.target.value,
+                                  state: e.target.value,
                                 }))
                               }
                               className="bg-secondary border-border h-8 text-sm"
+                              data-ocid="lead.edit.state.input"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground mb-1 block">
+                              City
+                            </Label>
+                            <Input
+                              value={editForm.city}
+                              onChange={(e) =>
+                                setEditForm((p) => ({
+                                  ...p,
+                                  city: e.target.value,
+                                }))
+                              }
+                              className="bg-secondary border-border h-8 text-sm"
+                              data-ocid="lead.edit.city.input"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <Label className="text-xs text-muted-foreground mb-1 block">
+                              Appointed Date &amp; Time
+                            </Label>
+                            <Input
+                              type="datetime-local"
+                              value={
+                                editForm.appointedAt
+                                  ? editForm.appointedAt.slice(0, 16)
+                                  : ""
+                              }
+                              onChange={(e) =>
+                                setEditForm((p) => ({
+                                  ...p,
+                                  appointedAt: e.target.value
+                                    ? new Date(e.target.value).toISOString()
+                                    : "",
+                                }))
+                              }
+                              className="bg-secondary border-border h-8 text-sm"
+                              data-ocid="lead.edit.appointedat.input"
                             />
                           </div>
                           <div>
@@ -361,7 +541,7 @@ export function FSEDashboard() {
                               </SelectContent>
                             </Select>
                           </div>
-                          <div className="col-span-2">
+                          <div>
                             <Label className="text-xs text-muted-foreground mb-1 block">
                               Stage
                             </Label>
@@ -405,22 +585,44 @@ export function FSEDashboard() {
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Mail className="w-3.5 h-3.5" />
-                          <span className="truncate">
-                            {selectedLead.email || "—"}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Phone className="w-3.5 h-3.5" />
-                          <span>{selectedLead.phone || "—"}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Building2 className="w-3.5 h-3.5" />
-                          <span className="truncate">
-                            {selectedLead.company || "—"}
-                          </span>
-                        </div>
+                        {selectedLead.mobileNo && (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Phone className="w-3.5 h-3.5" />
+                            <span>{selectedLead.mobileNo}</span>
+                          </div>
+                        )}
+                        {(selectedLead.city || selectedLead.state) && (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <MapPin className="w-3.5 h-3.5" />
+                            <span className="truncate">
+                              {[selectedLead.city, selectedLead.state]
+                                .filter(Boolean)
+                                .join(", ")}
+                            </span>
+                          </div>
+                        )}
+                        {selectedLead.address && (
+                          <div className="col-span-2 flex items-start gap-2 text-muted-foreground">
+                            <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                            <span>{selectedLead.address}</span>
+                          </div>
+                        )}
+                        {selectedLead.monthlyBill && (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <span className="text-xs font-medium text-foreground">
+                              Monthly Bill:
+                            </span>
+                            <span>₹{selectedLead.monthlyBill}</span>
+                          </div>
+                        )}
+                        {selectedLead.appointedAt && (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Calendar className="w-3.5 h-3.5" />
+                            <span>
+                              {formatDateTime(selectedLead.appointedAt)}
+                            </span>
+                          </div>
+                        )}
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${SOURCE_COLORS[selectedLead.source] ?? ""}`}

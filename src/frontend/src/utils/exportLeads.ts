@@ -37,12 +37,13 @@ export function exportLeadsToCSV(
   filename?: string,
 ): void {
   const headers = [
-    "Title",
-    "Contact Name",
-    "Email",
-    "Phone",
-    "Company",
-    "Source",
+    "Name",
+    "Mobile No",
+    "Address",
+    "Monthly Bill",
+    "State",
+    "City",
+    "Appointed Date",
     "Stage",
     "Assigned HOD",
     "Assigned FSE",
@@ -59,12 +60,13 @@ export function exportLeadsToCSV(
   };
 
   const rows = leads.map((lead) => [
-    csvEscape(lead.title),
     csvEscape(lead.name),
-    csvEscape(lead.email),
-    csvEscape(lead.phone),
-    csvEscape(lead.company),
-    csvEscape(lead.source),
+    csvEscape(lead.mobileNo),
+    csvEscape(lead.address),
+    csvEscape(lead.monthlyBill),
+    csvEscape(lead.state),
+    csvEscape(lead.city),
+    csvEscape(formatDateForExport(lead.appointedAt)),
     csvEscape(getStageName(lead.stageId)),
     csvEscape(getUserName(lead.assignedToHOD)),
     csvEscape(getUserName(lead.assignedToFSE)),

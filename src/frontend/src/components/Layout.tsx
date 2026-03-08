@@ -18,6 +18,7 @@ import {
   LogOut,
   Settings,
   TrendingUp,
+  Upload,
   Users,
 } from "lucide-react";
 import type React from "react";
@@ -85,16 +86,50 @@ const FSE_NAV: NavItem[] = [
   },
 ];
 
+const TC_NAV: NavItem[] = [
+  {
+    to: "/telecaller",
+    label: "My Leads",
+    icon: LayoutDashboard,
+    ocid: "nav.tc.leads.link",
+  },
+  {
+    to: "/telecaller/upload",
+    label: "Upload Leads",
+    icon: Upload,
+    ocid: "nav.tc.upload.link",
+  },
+];
+
+const THOD_NAV: NavItem[] = [
+  {
+    to: "/thod",
+    label: "All Leads",
+    icon: LayoutDashboard,
+    ocid: "nav.thod.leads.link",
+  },
+  {
+    to: "/thod/team",
+    label: "Team",
+    icon: Users,
+    ocid: "nav.thod.team.link",
+  },
+];
+
 const NAV_MAP: Record<Role, NavItem[]> = {
   Admin: ADMIN_NAV,
   HOD: HOD_NAV,
   FSE: FSE_NAV,
+  TeleCaller: TC_NAV,
+  THOD: THOD_NAV,
 };
 
 const ROLE_BADGE: Record<Role, string> = {
   Admin: "bg-purple-500/15 text-purple-300 border-purple-500/30",
   HOD: "bg-blue-500/15 text-blue-300 border-blue-500/30",
   FSE: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  TeleCaller: "bg-orange-500/15 text-orange-300 border-orange-500/30",
+  THOD: "bg-rose-500/15 text-rose-300 border-rose-500/30",
 };
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -143,12 +178,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-1">
           {navItems.map((item) => {
+            const exactRoutes = [
+              "/admin",
+              "/hod",
+              "/fse",
+              "/telecaller",
+              "/thod",
+            ];
             const active =
               pathname === item.to ||
-              (item.to !== "/admin" &&
-                item.to !== "/hod" &&
-                item.to !== "/fse" &&
-                pathname.startsWith(item.to));
+              (!exactRoutes.includes(item.to) && pathname.startsWith(item.to));
             return (
               <Link
                 key={item.to}
