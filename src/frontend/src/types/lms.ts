@@ -1,5 +1,5 @@
 // Role types
-export type Role = "Admin" | "HOD" | "FSE" | "TeleCaller" | "THOD";
+export type Role = "Admin" | "HOD" | "FSE" | "TeleCaller" | "THOD" | "BO";
 
 // User
 export interface User {
@@ -80,6 +80,70 @@ export interface DayLog {
   createdAt: string;
 }
 
+// First Visit Report
+export interface FirstVisitReport {
+  id: string;
+  leadId: string;
+  fseId: string;
+  fseName: string;
+  customerName: string;
+  mobileNo: string;
+  address: string;
+  existingProvider: string;
+  monthlyBill: string;
+  remarks: string;
+  location: { lat: number; lng: number; address: string } | null;
+  submittedAt: string; // ISO datetime
+  createdAt: string;
+}
+
+// Sale Order
+export interface SaleOrder {
+  id: string;
+  leadId: string;
+  submittedById: string;
+  submittedByName: string;
+  // Form fields
+  customerName: string;
+  mobileNo: string;
+  address: string;
+  state: string;
+  city: string;
+  monthlyBill: string;
+  sanctionLoad: string;
+  connectionType: string;
+  remarks: string;
+  location: { lat: number; lng: number; address: string } | null;
+  submittedAt: string;
+  createdAt: string;
+}
+
+// Order ID Request
+export interface OrderIdRequest {
+  id: string;
+  leadId: string;
+  submittedById: string;
+  submittedByName: string;
+  // Checkboxes
+  lightBill: boolean;
+  panCard: boolean;
+  cancelledCheque: boolean;
+  aadharCard: boolean;
+  allDocsGiven: boolean;
+  loanApproved: boolean;
+  nameOnLightBill: boolean;
+  sanctionLoad: boolean;
+  noc: boolean;
+  // Status
+  allChecked: boolean; // true when all 9 are ticked
+  status: "pending" | "approved" | "rejected";
+  reviewedById?: string;
+  reviewedByName?: string;
+  reviewedAt?: string;
+  submittedAt: string;
+  createdAt: string;
+}
+
 // localStorage keys
 export const LS_USERS = "lms_users";
 export const LS_SESSION = "lms_session";
@@ -88,6 +152,9 @@ export const LS_LEADS = "lms_leads";
 export const LS_NOTES = "lms_notes";
 export const LS_FOLLOWUPS = "lms_followups";
 export const LS_DAYLOGS = "lms_daylogs";
+export const LS_FVRS = "lms_fvrs";
+export const LS_SALE_ORDERS = "lms_sale_orders";
+export const LS_ORDER_ID_REQUESTS = "lms_order_id_requests";
 
 // Session
 export interface Session {
@@ -113,8 +180,9 @@ export const DEFAULT_STAGES: Stage[] = [
   { id: "stage-3", name: "Qualified", order: 3, color: "#8b5cf6" },
   { id: "stage-4", name: "Proposal", order: 4, color: "#f97316" },
   { id: "stage-5", name: "Negotiation", order: 5, color: "#06b6d4" },
-  { id: "stage-6", name: "Won", order: 6, color: "#10b981" },
-  { id: "stage-7", name: "Lost", order: 7, color: "#6b7280" },
+  { id: "stage-6", name: "Order Confirmed", order: 6, color: "#10b981" },
+  { id: "stage-7", name: "Won", order: 7, color: "#22c55e" },
+  { id: "stage-8", name: "Lost", order: 8, color: "#6b7280" },
 ];
 
 // Role colors for badges
@@ -124,6 +192,7 @@ export const ROLE_COLORS: Record<Role, string> = {
   FSE: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
   TeleCaller: "bg-orange-500/15 text-orange-300 border-orange-500/30",
   THOD: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+  BO: "bg-amber-500/15 text-amber-300 border-amber-500/30",
 };
 
 // Legacy support types (kept for compatibility with old components that may reference these)

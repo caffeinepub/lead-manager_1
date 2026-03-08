@@ -357,6 +357,7 @@ export function UserManagement() {
                     <SelectItem value="FSE">FSE</SelectItem>
                     <SelectItem value="TeleCaller">TeleCaller</SelectItem>
                     <SelectItem value="THOD">THOD</SelectItem>
+                    <SelectItem value="BO">BO</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

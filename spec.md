@@ -1,38 +1,49 @@
 # Lead Manager
 
 ## Current State
-- Full role-based LMS with Admin, HOD, FSE, TeleCaller, THOD roles
-- TeleCaller and FSE have dedicated dashboards for lead management
-- Admin, HOD, THOD dashboards have tabs for overview, follow-ups, and activity
-- All data stored in localStorage via LMSContext and storage utilities
+
+- Roles: Admin, HOD, FSE, TeleCaller, THOD
+- Order ID Request form (9 checkboxes) exists on FSE leads
+- When all 9 are ticked and submitted, request shows under "Pending Approval" tab in Admin and THOD dashboards
+- FSE lead cards show stage as a badge; stage can only be changed inside the lead detail modal in edit mode
+- Layout/nav, types, and storage are all in place
 
 ## Requested Changes (Diff)
 
 ### Add
-- **DayLog type** in `types/lms.ts`: captures userId, role, date, dayStartTime, dayStartLocation (lat/lng/address), dayEndTime, dayEndLocation, notes
-- **LS_DAYLOGS localStorage key** in `types/lms.ts`
-- **getDayLogs / saveDayLogs** in `storage.ts`
-- **DayLog context** in `LMSContext`: addDayLog, updateDayLog, getDayLogsForUser, getTodayLog
-- **Day Start / Day End banner** in TeleCallerDashboard and FSEDashboard: sticky top-of-page panel showing current day status; "Start Day" captures geolocation + timestamp; "End Day" captures geolocation + timestamp; shows elapsed time while day is active
-- **"Day Reports" tab** in AdminDashboard, HODDashboard, THODDashboard: shows list of all TeleCaller/FSE users visible to that role, with today's day log (started at, ended at, location); date filter to browse historical days; expandable rows showing start/end location details
+- New role: **BO** (Business Officer)
+  - Added to `Role` type in `lms.ts`
+  - Added to `ROLE_COLORS` map
+  - Added to `NAV_MAP` in `Layout.tsx` with its own nav items
+  - Seeded sample BO user: `bo.user` / `bo@12345`
+  - Available in UserManagement role dropdown
+  - BO gets its own dashboard page at `/bo`
+  - BO dashboard has a "Pending Approval" tab showing all Order ID Requests where `allChecked === true && status === "pending"`, with Approve/Reject buttons (same as Admin's tab)
+  - BO can also view overall leads (read-only, all leads visible to them)
+  - RoleRedirect in App.tsx routes BO to `/bo`
+
+- **FSE stage dropdown on lead card**
+  - Each FSE lead card gets an inline stage `<Select>` dropdown (replaces the static stage badge, or is placed below it)
+  - Changing the dropdown immediately calls `updateLead` with the new stageId
+  - No need to open lead detail modal to change stage
 
 ### Modify
-- `AdminDashboard.tsx`: add a "Day Reports" tab alongside existing tabs
-- `HODDashboard.tsx`: add a "Day Reports" tab (shows FSEs assigned under HOD's leads)
-- `THODDashboard.tsx`: add a "Day Reports" tab (shows all TeleCaller/FSE users system-wide)
-- `TeleCallerDashboard.tsx`: add Day Start/End panel at the top
-- `FSEDashboard.tsx`: add Day Start/End panel at the top
-- `LMSContext.tsx`: add dayLogs state and CRUD helpers
-- `storage.ts`: add dayLogs persistence helpers
-- `types/lms.ts`: add DayLog interface and LS_DAYLOGS constant
+- `types/lms.ts`: Add `"BO"` to `Role` union type and `ROLE_COLORS`
+- `utils/storage.ts`: Add seeded BO user to `seedData()`; note: since seedData only seeds when `users.length === 0`, existing users in localStorage won't be affected — document this
+- `App.tsx`: Add `/bo` route and `/bo` RoleRedirect case; import BODashboard
+- `Layout.tsx`: Add `BO_NAV` items and `ROLE_BADGE` entry for BO; add to `NAV_MAP`
+- `pages/admin/UserManagement.tsx`: Add "BO" to the role `<Select>` options
+- `pages/fse/FSEDashboard.tsx`: Add inline stage select dropdown on each lead card (stop-propagation on change so it doesn't open modal)
 
 ### Remove
-- Nothing
+- Nothing removed
 
 ## Implementation Plan
-1. Add DayLog interface + LS_DAYLOGS to `types/lms.ts`
-2. Add getDayLogs/saveDayLogs to `storage.ts`
-3. Add dayLogs state, addDayLog, updateDayLog, getDayLogsForUser, getTodayLog to `LMSContext.tsx`
-4. Create DayTracker component (shared banner for TC/FSE) with geolocation + start/end logic
-5. Add DayTracker to TeleCallerDashboard and FSEDashboard
-6. Add "Day Reports" tab to AdminDashboard, HODDashboard, THODDashboard showing date-filterable table of day logs per user
+
+1. Update `types/lms.ts` — add `"BO"` to `Role` type and `ROLE_COLORS`
+2. Update `utils/storage.ts` — add seeded BO user
+3. Create `src/frontend/src/pages/bo/BODashboard.tsx` — BO dashboard with Pending Approval tab and All Leads read-only tab
+4. Update `App.tsx` — add `/bo` route, import BODashboard, update RoleRedirect
+5. Update `Layout.tsx` — add BO nav, role badge, NAV_MAP entry
+6. Update `pages/admin/UserManagement.tsx` — add BO to role dropdown
+7. Update `pages/fse/FSEDashboard.tsx` — add inline stage select on each lead card

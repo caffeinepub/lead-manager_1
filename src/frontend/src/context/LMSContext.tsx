@@ -8,23 +8,32 @@ import {
 import type {
   DayLocation,
   DayLog,
+  FirstVisitReport,
   FollowUp,
   Lead,
   Note,
+  OrderIdRequest,
+  SaleOrder,
   Stage,
   User,
 } from "../types/lms";
 import {
   getDayLogs,
+  getFVRs,
   getFollowUps,
   getLeads,
   getNotes,
+  getOrderIdRequests,
+  getSaleOrders,
   getStages,
   getUsers,
   saveDayLogs,
+  saveFVRs,
   saveFollowUps,
   saveLeads,
   saveNotes,
+  saveOrderIdRequests,
+  saveSaleOrders,
   saveStages,
   saveUsers,
 } from "../utils/storage";
@@ -84,6 +93,30 @@ interface LMSContextType {
   getTodayLog: (userId: string) => DayLog | undefined;
   getDayLogsForUser: (userId: string) => DayLog[];
   getDayLogsForDate: (date: string) => DayLog[];
+
+  // First Visit Reports
+  fvrs: FirstVisitReport[];
+  addFVR: (
+    data: Omit<FirstVisitReport, "id" | "createdAt">,
+  ) => FirstVisitReport;
+  getLeadFVRs: (leadId: string) => FirstVisitReport[];
+
+  // Sale Orders
+  saleOrders: SaleOrder[];
+  addSaleOrder: (data: Omit<SaleOrder, "id" | "createdAt">) => SaleOrder;
+  getLeadSaleOrders: (leadId: string) => SaleOrder[];
+
+  // Order ID Requests
+  orderIdRequests: OrderIdRequest[];
+  addOrderIdRequest: (
+    data: Omit<OrderIdRequest, "id" | "createdAt">,
+  ) => OrderIdRequest;
+  updateOrderIdRequest: (
+    id: string,
+    updates: Partial<Omit<OrderIdRequest, "id" | "createdAt">>,
+  ) => void;
+  getLeadOrderIdRequests: (leadId: string) => OrderIdRequest[];
+  getPendingOrderIdRequests: () => OrderIdRequest[];
 }
 
 const LMSContext = createContext<LMSContextType | undefined>(undefined);
@@ -97,6 +130,13 @@ export function LMSProvider({ children }: { children: ReactNode }) {
     getFollowUps(),
   );
   const [dayLogs, setDayLogsState] = useState<DayLog[]>(() => getDayLogs());
+  const [fvrs, setFVRsState] = useState<FirstVisitReport[]>(() => getFVRs());
+  const [saleOrders, setSaleOrdersState] = useState<SaleOrder[]>(() =>
+    getSaleOrders(),
+  );
+  const [orderIdRequests, setOrderIdRequestsState] = useState<OrderIdRequest[]>(
+    () => getOrderIdRequests(),
+  );
 
   // --- Sync helpers ---
   const setUsers = useCallback(
@@ -159,6 +199,47 @@ export function LMSProvider({ children }: { children: ReactNode }) {
       setDayLogsState((prev) => {
         const next = typeof updater === "function" ? updater(prev) : updater;
         saveDayLogs(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const setFVRs = useCallback(
+    (
+      updater:
+        | FirstVisitReport[]
+        | ((prev: FirstVisitReport[]) => FirstVisitReport[]),
+    ) => {
+      setFVRsState((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        saveFVRs(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const setSaleOrders = useCallback(
+    (updater: SaleOrder[] | ((prev: SaleOrder[]) => SaleOrder[])) => {
+      setSaleOrdersState((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        saveSaleOrders(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const setOrderIdRequests = useCallback(
+    (
+      updater:
+        | OrderIdRequest[]
+        | ((prev: OrderIdRequest[]) => OrderIdRequest[]),
+    ) => {
+      setOrderIdRequestsState((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        saveOrderIdRequests(next);
         return next;
       });
     },
@@ -463,6 +544,105 @@ export function LMSProvider({ children }: { children: ReactNode }) {
     [dayLogs],
   );
 
+  // --- First Visit Reports ---
+  const addFVR = useCallback(
+    (data: Omit<FirstVisitReport, "id" | "createdAt">): FirstVisitReport => {
+      const newFVR: FirstVisitReport = {
+        ...data,
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+      };
+      setFVRs((prev) => [newFVR, ...prev]);
+      return newFVR;
+    },
+    [setFVRs],
+  );
+
+  const getLeadFVRs = useCallback(
+    (leadId: string): FirstVisitReport[] => {
+      return fvrs
+        .filter((f) => f.leadId === leadId)
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+    },
+    [fvrs],
+  );
+
+  // --- Sale Orders ---
+  const addSaleOrder = useCallback(
+    (data: Omit<SaleOrder, "id" | "createdAt">): SaleOrder => {
+      const newOrder: SaleOrder = {
+        ...data,
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+      };
+      setSaleOrders((prev) => [newOrder, ...prev]);
+      return newOrder;
+    },
+    [setSaleOrders],
+  );
+
+  const getLeadSaleOrders = useCallback(
+    (leadId: string): SaleOrder[] => {
+      return saleOrders
+        .filter((o) => o.leadId === leadId)
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+    },
+    [saleOrders],
+  );
+
+  // --- Order ID Requests ---
+  const addOrderIdRequest = useCallback(
+    (data: Omit<OrderIdRequest, "id" | "createdAt">): OrderIdRequest => {
+      const newReq: OrderIdRequest = {
+        ...data,
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+      };
+      setOrderIdRequests((prev) => [newReq, ...prev]);
+      return newReq;
+    },
+    [setOrderIdRequests],
+  );
+
+  const updateOrderIdRequest = useCallback(
+    (
+      id: string,
+      updates: Partial<Omit<OrderIdRequest, "id" | "createdAt">>,
+    ) => {
+      setOrderIdRequests((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, ...updates } : r)),
+      );
+    },
+    [setOrderIdRequests],
+  );
+
+  const getLeadOrderIdRequests = useCallback(
+    (leadId: string): OrderIdRequest[] => {
+      return orderIdRequests
+        .filter((r) => r.leadId === leadId)
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+    },
+    [orderIdRequests],
+  );
+
+  const getPendingOrderIdRequests = useCallback((): OrderIdRequest[] => {
+    return orderIdRequests
+      .filter((r) => r.allChecked && r.status === "pending")
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+  }, [orderIdRequests]);
+
   const value: LMSContextType = {
     users,
     addUser,
@@ -494,6 +674,17 @@ export function LMSProvider({ children }: { children: ReactNode }) {
     getTodayLog,
     getDayLogsForUser,
     getDayLogsForDate,
+    fvrs,
+    addFVR,
+    getLeadFVRs,
+    saleOrders,
+    addSaleOrder,
+    getLeadSaleOrders,
+    orderIdRequests,
+    addOrderIdRequest,
+    updateOrderIdRequest,
+    getLeadOrderIdRequests,
+    getPendingOrderIdRequests,
   };
 
   return <LMSContext.Provider value={value}>{children}</LMSContext.Provider>;

@@ -1,8 +1,11 @@
 import type {
   DayLog,
+  FirstVisitReport,
   FollowUp,
   Lead,
   Note,
+  OrderIdRequest,
+  SaleOrder,
   Session,
   Stage,
   User,
@@ -12,8 +15,11 @@ import {
   LEAD_SOURCES,
   LS_DAYLOGS,
   LS_FOLLOWUPS,
+  LS_FVRS,
   LS_LEADS,
   LS_NOTES,
+  LS_ORDER_ID_REQUESTS,
+  LS_SALE_ORDERS,
   LS_SESSION,
   LS_STAGES,
   LS_USERS,
@@ -93,7 +99,24 @@ export function seedData(): void {
       role: "THOD",
       createdAt: new Date().toISOString(),
     };
-    save(LS_USERS, [adminUser, hodUser, fseUser1, fseUser2, tcUser, thodUser]);
+    const boUser: User = {
+      id: "user-bo-1",
+      username: "bo.user",
+      passwordHash: btoa("bo@12345"),
+      name: "Business Officer",
+      email: "bo@company.com",
+      role: "BO",
+      createdAt: new Date().toISOString(),
+    };
+    save(LS_USERS, [
+      adminUser,
+      hodUser,
+      fseUser1,
+      fseUser2,
+      tcUser,
+      thodUser,
+      boUser,
+    ]);
   }
 
   // Seed stages
@@ -285,4 +308,31 @@ export function getDayLogs(): DayLog[] {
 
 export function saveDayLogs(dayLogs: DayLog[]): void {
   save(LS_DAYLOGS, dayLogs);
+}
+
+// --- First Visit Reports ---
+export function getFVRs(): FirstVisitReport[] {
+  return load<FirstVisitReport[]>(LS_FVRS) ?? [];
+}
+
+export function saveFVRs(fvrs: FirstVisitReport[]): void {
+  save(LS_FVRS, fvrs);
+}
+
+// --- Sale Orders ---
+export function getSaleOrders(): SaleOrder[] {
+  return load<SaleOrder[]>(LS_SALE_ORDERS) ?? [];
+}
+
+export function saveSaleOrders(orders: SaleOrder[]): void {
+  save(LS_SALE_ORDERS, orders);
+}
+
+// --- Order ID Requests ---
+export function getOrderIdRequests(): OrderIdRequest[] {
+  return load<OrderIdRequest[]>(LS_ORDER_ID_REQUESTS) ?? [];
+}
+
+export function saveOrderIdRequests(requests: OrderIdRequest[]): void {
+  save(LS_ORDER_ID_REQUESTS, requests);
 }

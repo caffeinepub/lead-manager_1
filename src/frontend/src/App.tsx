@@ -16,6 +16,7 @@ import { AdminDashboard } from "./pages/admin/AdminDashboard";
 import { AdminLeads } from "./pages/admin/AdminLeads";
 import { StageManagement } from "./pages/admin/StageManagement";
 import { UserManagement } from "./pages/admin/UserManagement";
+import { BODashboard } from "./pages/bo/BODashboard";
 import { FSEDashboard } from "./pages/fse/FSEDashboard";
 import { FollowUpsPage } from "./pages/fse/FollowUpsPage";
 import { HODDashboard } from "./pages/hod/HODDashboard";
@@ -43,6 +44,8 @@ function RoleRedirect() {
       navigate({ to: "/telecaller" });
     } else if (currentUser.role === "THOD") {
       navigate({ to: "/thod" });
+    } else if (currentUser.role === "BO") {
+      navigate({ to: "/bo" });
     } else {
       navigate({ to: "/fse" });
     }
@@ -177,6 +180,13 @@ const thodTeamRoute = createRoute({
   component: THODTeam,
 });
 
+// BO routes
+const boRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/bo",
+  component: BODashboard,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -192,6 +202,7 @@ const routeTree = rootRoute.addChildren([
   teleCallerUploadRoute,
   thodRoute,
   thodTeamRoute,
+  boRoute,
 ]);
 
 const router = createRouter({ routeTree });

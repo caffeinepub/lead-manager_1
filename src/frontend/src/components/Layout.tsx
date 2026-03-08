@@ -116,12 +116,22 @@ const THOD_NAV: NavItem[] = [
   },
 ];
 
+const BO_NAV: NavItem[] = [
+  {
+    to: "/bo",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    ocid: "nav.bo.dashboard.link",
+  },
+];
+
 const NAV_MAP: Record<Role, NavItem[]> = {
   Admin: ADMIN_NAV,
   HOD: HOD_NAV,
   FSE: FSE_NAV,
   TeleCaller: TC_NAV,
   THOD: THOD_NAV,
+  BO: BO_NAV,
 };
 
 const ROLE_BADGE: Record<Role, string> = {
@@ -130,6 +140,7 @@ const ROLE_BADGE: Record<Role, string> = {
   FSE: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
   TeleCaller: "bg-orange-500/15 text-orange-300 border-orange-500/30",
   THOD: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+  BO: "bg-amber-500/15 text-amber-300 border-amber-500/30",
 };
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -184,6 +195,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               "/fse",
               "/telecaller",
               "/thod",
+              "/bo",
             ];
             const active =
               pathname === item.to ||

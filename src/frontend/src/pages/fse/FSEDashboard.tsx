@@ -20,12 +20,16 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import {
   Calendar,
+  CheckSquare,
   Clock,
+  Download,
+  FileText,
   MapPin,
   MessageSquare,
   Phone,
   Plus,
   Send,
+  ShoppingCart,
   TrendingUp,
   Upload,
 } from "lucide-react";
@@ -37,7 +41,16 @@ import {
   type LeadFormInput,
 } from "../../components/AddLeadDialog";
 import { DayTracker } from "../../components/DayTracker";
+import {
+  FirstVisitReportDialog,
+  generateFVRPdf,
+} from "../../components/FirstVisitReportDialog";
 import { LeadUploadDialog } from "../../components/LeadUploadDialog";
+import { OrderIdRequestDialog } from "../../components/OrderIdRequestDialog";
+import {
+  SaleOrderDialog,
+  generateSaleOrderPdf,
+} from "../../components/SaleOrderDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useLMS } from "../../context/LMSContext";
 import { LEAD_SOURCES, type Lead, SOURCE_COLORS } from "../../types/lms";
@@ -51,6 +64,13 @@ function formatDateTime(iso: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function formatDateForFilename(date: Date): string {
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yy = String(date.getFullYear()).slice(-2);
+  return `${dd}.${mm}.${yy}`;
 }
 
 interface FollowUpFormData {
@@ -77,6 +97,12 @@ export function FSEDashboard() {
     addFollowUp,
     addLead,
     getLeadFollowUps,
+    addFVR,
+    getLeadFVRs,
+    addSaleOrder,
+    getLeadSaleOrders,
+    addOrderIdRequest,
+    getLeadOrderIdRequests,
   } = useLMS();
 
   // FSE role restriction: only show leads explicitly assigned to this FSE user.
@@ -114,6 +140,18 @@ export function FSEDashboard() {
   const [addOpen, setAddOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
 
+  // FVR state
+  const [fvrOpen, setFvrOpen] = useState(false);
+  const [fvrLead, setFvrLead] = useState<Lead | null>(null);
+
+  // Sale Order state
+  const [saleOrderOpen, setSaleOrderOpen] = useState(false);
+  const [saleOrderLead, setSaleOrderLead] = useState<Lead | null>(null);
+
+  // Order ID Request state
+  const [orderIdOpen, setOrderIdOpen] = useState(false);
+  const [orderIdLead, setOrderIdLead] = useState<Lead | null>(null);
+
   const getStage = (stageId: string) => stages.find((s) => s.id === stageId);
   const getUser = (userId: string | null) =>
     userId ? users.find((u) => u.id === userId) : null;
@@ -121,6 +159,13 @@ export function FSEDashboard() {
   const selectedLeadNotes = selectedLead ? getLeadNotes(selectedLead.id) : [];
   const selectedLeadFollowUps = selectedLead
     ? getLeadFollowUps(selectedLead.id)
+    : [];
+  const selectedLeadFVRs = selectedLead ? getLeadFVRs(selectedLead.id) : [];
+  const selectedLeadSaleOrders = selectedLead
+    ? getLeadSaleOrders(selectedLead.id)
+    : [];
+  const selectedLeadOrderIdRequests = selectedLead
+    ? getLeadOrderIdRequests(selectedLead.id)
     : [];
 
   const openLeadDetail = (lead: Lead) => {
@@ -236,6 +281,29 @@ export function FSEDashboard() {
     setFollowUpOpen(false);
   };
 
+  const openFVR = (lead: Lead, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setFvrLead(lead);
+    setFvrOpen(true);
+  };
+
+  const openSaleOrder = (lead: Lead, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSaleOrderLead(lead);
+    setSaleOrderOpen(true);
+  };
+
+  const openOrderId = (lead: Lead, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setOrderIdLead(lead);
+    setOrderIdOpen(true);
+  };
+
+  // Find or create "Order Confirmed" stage id
+  const orderConfirmedStage = stages.find(
+    (s) => s.name.toLowerCase() === "order confirmed",
+  );
+
   return (
     <div className="p-6 max-w-7xl mx-auto animate-fade-in">
       {/* Day Tracker Banner */}
@@ -291,6 +359,7 @@ export function FSEDashboard() {
             const stage = getStage(lead.stageId);
             const noteCount = getLeadNotes(lead.id).length;
             const followUpCount = getLeadFollowUps(lead.id).length;
+            const fvrCount = getLeadFVRs(lead.id).length;
             return (
               <motion.div
                 key={lead.id}
@@ -315,19 +384,37 @@ export function FSEDashboard() {
                           </p>
                         )}
                       </div>
-                      {stage && (
-                        <Badge
-                          variant="outline"
-                          className="text-xs shrink-0"
-                          style={{
-                            borderColor: `${stage.color}40`,
-                            color: stage.color,
-                            backgroundColor: `${stage.color}18`,
-                          }}
+                      <Select
+                        value={lead.stageId}
+                        onValueChange={(newStageId) => {
+                          updateLead(lead.id, { stageId: newStageId });
+                          toast.success("Stage updated");
+                        }}
+                      >
+                        <SelectTrigger
+                          className="h-7 text-xs shrink-0 w-auto min-w-[90px] max-w-[130px] border px-2"
+                          style={
+                            stage
+                              ? {
+                                  borderColor: `${stage.color}40`,
+                                  color: stage.color,
+                                  backgroundColor: `${stage.color}18`,
+                                }
+                              : {}
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                          data-ocid={`fse.lead.stage_select.${idx + 1}`}
                         >
-                          {stage.name}
-                        </Badge>
-                      )}
+                          <SelectValue placeholder="Stage" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-popover border-border">
+                          {stages.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </CardHeader>
                   <CardContent className="pt-0 space-y-1.5">
@@ -353,6 +440,53 @@ export function FSEDashboard() {
                         <Calendar className="w-3 h-3" /> {followUpCount}{" "}
                         follow-up{followUpCount !== 1 ? "s" : ""}
                       </span>
+                      {fvrCount > 0 && (
+                        <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium">
+                          <FileText className="w-3 h-3" /> {fvrCount} FVR
+                        </span>
+                      )}
+                    </div>
+                    {/* Action Buttons */}
+                    <div className="pt-2 space-y-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/60 text-xs h-7"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openFVR(lead);
+                        }}
+                        data-ocid={`fse.lead.fvr_button.${idx + 1}`}
+                      >
+                        <FileText className="w-3 h-3 mr-1.5" />
+                        1st Visit Report
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full border-green-500/40 text-green-400 hover:bg-green-500/10 hover:border-green-500/60 text-xs h-7"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openSaleOrder(lead);
+                        }}
+                        data-ocid={`fse.lead.sale_order_button.${idx + 1}`}
+                      >
+                        <ShoppingCart className="w-3 h-3 mr-1.5" />
+                        Sale Order
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full border-blue-500/40 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/60 text-xs h-7"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openOrderId(lead);
+                        }}
+                        data-ocid={`fse.lead.order_id_button.${idx + 1}`}
+                      >
+                        <CheckSquare className="w-3 h-3 mr-1.5" />
+                        Request Order ID
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -378,6 +512,56 @@ export function FSEDashboard() {
         onOpenChange={setUploadOpen}
         onImport={handleImport}
       />
+
+      {/* First Visit Report Dialog */}
+      {fvrLead && currentUser && (
+        <FirstVisitReportDialog
+          open={fvrOpen}
+          onOpenChange={setFvrOpen}
+          lead={fvrLead}
+          fse={currentUser}
+          onSubmit={(data) => {
+            addFVR(data);
+          }}
+        />
+      )}
+
+      {/* Sale Order Dialog */}
+      {saleOrderLead && currentUser && (
+        <SaleOrderDialog
+          open={saleOrderOpen}
+          onOpenChange={setSaleOrderOpen}
+          lead={saleOrderLead}
+          submittedBy={currentUser}
+          onSubmit={(data) => {
+            addSaleOrder(data);
+            // Auto-change stage to "Order Confirmed"
+            if (orderConfirmedStage) {
+              updateLead(saleOrderLead.id, {
+                stageId: orderConfirmedStage.id,
+              });
+              if (selectedLead?.id === saleOrderLead.id) {
+                setSelectedLead((prev) =>
+                  prev ? { ...prev, stageId: orderConfirmedStage.id } : null,
+                );
+              }
+            }
+          }}
+        />
+      )}
+
+      {/* Order ID Request Dialog */}
+      {orderIdLead && currentUser && (
+        <OrderIdRequestDialog
+          open={orderIdOpen}
+          onOpenChange={setOrderIdOpen}
+          lead={orderIdLead}
+          submittedBy={currentUser}
+          onSubmit={(data) => {
+            addOrderIdRequest(data);
+          }}
+        />
+      )}
 
       {/* Lead Detail Dialog */}
       <Dialog
@@ -641,7 +825,7 @@ export function FSEDashboard() {
 
                     {/* Action buttons */}
                     {!editMode && (
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           variant="outline"
                           size="sm"
@@ -661,6 +845,202 @@ export function FSEDashboard() {
                           <Calendar className="w-3.5 h-3.5 mr-1.5" />
                           Add Follow-up
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openFVR(selectedLead)}
+                          className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/60"
+                          data-ocid="lead.detail.fvr.open_modal_button"
+                        >
+                          <FileText className="w-3.5 h-3.5 mr-1.5" />
+                          1st Visit Report
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openSaleOrder(selectedLead)}
+                          className="border-green-500/40 text-green-400 hover:bg-green-500/10 hover:border-green-500/60"
+                          data-ocid="lead.detail.sale_order.open_modal_button"
+                        >
+                          <ShoppingCart className="w-3.5 h-3.5 mr-1.5" />
+                          Sale Order
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openOrderId(selectedLead)}
+                          className="border-blue-500/40 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/60"
+                          data-ocid="lead.detail.order_id.open_modal_button"
+                        >
+                          <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
+                          Request Order ID
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* FVR Attachments */}
+                    {selectedLeadFVRs.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                          Visit Reports ({selectedLeadFVRs.length})
+                        </p>
+                        <div className="space-y-2">
+                          {selectedLeadFVRs.map((fvr, i) => {
+                            const visitDate = new Date(fvr.submittedAt);
+                            const filename = `FVR ${formatDateForFilename(visitDate)}.pdf`;
+                            return (
+                              <div
+                                key={fvr.id}
+                                className="flex items-center justify-between p-2.5 rounded-md bg-emerald-500/8 border border-emerald-500/20 text-xs"
+                                data-ocid={`lead.fvr.item.${i + 1}`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <FileText className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  <div className="min-w-0">
+                                    <p className="font-medium text-foreground truncate">
+                                      {filename}
+                                    </p>
+                                    <p className="text-muted-foreground">
+                                      {formatDateTime(fvr.submittedAt)} ·{" "}
+                                      {fvr.fseName}
+                                      {fvr.location && (
+                                        <span className="ml-1 text-emerald-400">
+                                          ·{" "}
+                                          <MapPin className="w-2.5 h-2.5 inline" />{" "}
+                                          GPS
+                                        </span>
+                                      )}
+                                    </p>
+                                  </div>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 px-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 shrink-0 ml-2"
+                                  onClick={() => generateFVRPdf(fvr)}
+                                  data-ocid={`lead.fvr.download_button.${i + 1}`}
+                                >
+                                  <Download className="w-3 h-3 mr-1" />
+                                  PDF
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Sale Order Attachments */}
+                    {selectedLeadSaleOrders.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                          Sale Orders ({selectedLeadSaleOrders.length})
+                        </p>
+                        <div className="space-y-2">
+                          {selectedLeadSaleOrders.map((order, i) => {
+                            const orderDate = new Date(order.submittedAt);
+                            const filename = `Sale Order ${formatDateForFilename(orderDate)}.pdf`;
+                            return (
+                              <div
+                                key={order.id}
+                                className="flex items-center justify-between p-2.5 rounded-md bg-green-500/8 border border-green-500/20 text-xs"
+                                data-ocid={`lead.sale_order.item.${i + 1}`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <ShoppingCart className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                                  <div className="min-w-0">
+                                    <p className="font-medium text-foreground truncate">
+                                      {filename}
+                                    </p>
+                                    <p className="text-muted-foreground">
+                                      {formatDateTime(order.submittedAt)} ·{" "}
+                                      {order.submittedByName}
+                                      {order.location && (
+                                        <span className="ml-1 text-green-400">
+                                          ·{" "}
+                                          <MapPin className="w-2.5 h-2.5 inline" />{" "}
+                                          GPS
+                                        </span>
+                                      )}
+                                    </p>
+                                  </div>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 px-2 text-green-400 hover:text-green-300 hover:bg-green-500/10 shrink-0 ml-2"
+                                  onClick={() => generateSaleOrderPdf(order)}
+                                  data-ocid={`lead.sale_order.download_button.${i + 1}`}
+                                >
+                                  <Download className="w-3 h-3 mr-1" />
+                                  PDF
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Order ID Requests */}
+                    {selectedLeadOrderIdRequests.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                          Order ID Requests (
+                          {selectedLeadOrderIdRequests.length})
+                        </p>
+                        <div className="space-y-2">
+                          {selectedLeadOrderIdRequests.map((req, i) => {
+                            const checkedCount = [
+                              req.lightBill,
+                              req.panCard,
+                              req.cancelledCheque,
+                              req.aadharCard,
+                              req.allDocsGiven,
+                              req.loanApproved,
+                              req.nameOnLightBill,
+                              req.sanctionLoad,
+                              req.noc,
+                            ].filter(Boolean).length;
+                            return (
+                              <div
+                                key={req.id}
+                                className="p-2.5 rounded-md bg-blue-500/8 border border-blue-500/20 text-xs"
+                                data-ocid={`lead.order_id_request.item.${i + 1}`}
+                              >
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <span className="flex items-center gap-1.5 text-blue-400 font-medium">
+                                    <CheckSquare className="w-3.5 h-3.5" />
+                                    {checkedCount}/9 documents
+                                  </span>
+                                  <span
+                                    className={`px-2 py-0.5 rounded-full text-xs font-medium border ${
+                                      req.status === "approved"
+                                        ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                                        : req.status === "rejected"
+                                          ? "bg-rose-500/15 text-rose-300 border-rose-500/30"
+                                          : req.allChecked
+                                            ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                                            : "bg-secondary text-muted-foreground border-border"
+                                    }`}
+                                  >
+                                    {req.status === "approved"
+                                      ? "Approved"
+                                      : req.status === "rejected"
+                                        ? "Rejected"
+                                        : req.allChecked
+                                          ? "Pending Approval"
+                                          : "Incomplete"}
+                                  </span>
+                                </div>
+                                <p className="text-muted-foreground">
+                                  {formatDateTime(req.submittedAt)} ·{" "}
+                                  {req.submittedByName}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
 

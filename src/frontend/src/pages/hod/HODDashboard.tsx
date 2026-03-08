@@ -42,6 +42,7 @@ import {
   ClipboardList,
   Clock,
   Download,
+  FileText,
   MapPin,
   MessageSquare,
   Phone,
@@ -59,6 +60,7 @@ import {
   AddLeadDialog,
   type LeadFormInput,
 } from "../../components/AddLeadDialog";
+import { generateFVRPdf } from "../../components/FirstVisitReportDialog";
 import { LeadUploadDialog } from "../../components/LeadUploadDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useLMS } from "../../context/LMSContext";
@@ -148,6 +150,13 @@ function timeAgo(iso: string) {
   return `${days}d ago`;
 }
 
+function formatDateForFilename(date: Date): string {
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yy = String(date.getFullYear()).slice(-2);
+  return `${dd}.${mm}.${yy}`;
+}
+
 export function HODDashboard() {
   const { currentUser } = useAuth();
   const {
@@ -161,6 +170,7 @@ export function HODDashboard() {
     getLeadNotes,
     addNote,
     getLeadFollowUps,
+    getLeadFVRs,
     updateFollowUp,
     getDayLogsForDate,
   } = useLMS();
@@ -369,6 +379,7 @@ export function HODDashboard() {
   const selectedLeadFollowUps = selectedLead
     ? getLeadFollowUps(selectedLead.id)
     : [];
+  const selectedLeadFVRs = selectedLead ? getLeadFVRs(selectedLead.id) : [];
 
   // Checkbox helpers for HOD lead cards
   const allSelected =
@@ -1349,6 +1360,58 @@ export function HODDashboard() {
                     )}
                   </div>
                 </div>
+
+                {/* FVR Attachments */}
+                {selectedLeadFVRs.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                      Visit Reports ({selectedLeadFVRs.length})
+                    </p>
+                    <div className="space-y-2">
+                      {selectedLeadFVRs.map((fvr, i) => {
+                        const visitDate = new Date(fvr.submittedAt);
+                        const filename = `FVR ${formatDateForFilename(visitDate)}.pdf`;
+                        return (
+                          <div
+                            key={fvr.id}
+                            className="flex items-center justify-between p-2.5 rounded-md bg-emerald-500/8 border border-emerald-500/20 text-xs"
+                            data-ocid={`hod.lead.fvr.item.${i + 1}`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <FileText className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <div className="min-w-0">
+                                <p className="font-medium text-foreground truncate">
+                                  {filename}
+                                </p>
+                                <p className="text-muted-foreground">
+                                  {formatDateTime(fvr.submittedAt)} ·{" "}
+                                  {fvr.fseName}
+                                  {fvr.location && (
+                                    <span className="ml-1 text-emerald-400">
+                                      ·{" "}
+                                      <MapPin className="w-2.5 h-2.5 inline" />{" "}
+                                      GPS
+                                    </span>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 shrink-0 ml-2"
+                              onClick={() => generateFVRPdf(fvr)}
+                              data-ocid={`hod.lead.fvr.download_button.${i + 1}`}
+                            >
+                              <Download className="w-3 h-3 mr-1" />
+                              PDF
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Follow-ups summary */}
                 {selectedLeadFollowUps.length > 0 && (
