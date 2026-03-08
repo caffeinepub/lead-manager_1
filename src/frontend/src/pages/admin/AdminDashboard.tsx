@@ -21,11 +21,14 @@ import {
   ClipboardCheck,
   ClipboardList,
   Clock,
+  Download,
+  FileJson,
   History,
   Kanban,
   MapPin,
   PhoneCall,
   TrendingUp,
+  Upload,
   UserCheck,
   UserCog,
   UserPlus,
@@ -34,11 +37,23 @@ import {
   XCircle,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/AuthContext";
 import { useLMS } from "../../context/LMSContext";
-import { ROLE_COLORS } from "../../types/lms";
+import {
+  LS_APPROVAL_LOGS,
+  LS_DAYLOGS,
+  LS_FOLLOWUPS,
+  LS_FVRS,
+  LS_LEADS,
+  LS_NOTES,
+  LS_ORDER_ID_REQUESTS,
+  LS_SALE_ORDERS,
+  LS_STAGES,
+  LS_USERS,
+  ROLE_COLORS,
+} from "../../types/lms";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -106,6 +121,11 @@ export function AdminDashboard() {
     leads,
     stages,
     followUps,
+    notes,
+    dayLogs,
+    fvrs,
+    saleOrders,
+    orderIdRequests,
     updateFollowUp,
     getDayLogsForDate,
     getPendingOrderIdRequests,
@@ -115,6 +135,119 @@ export function AdminDashboard() {
   } = useLMS();
 
   const [activeTab, setActiveTab] = useState("overview");
+
+  // Import/Export state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importStatus, setImportStatus] = useState<
+    "idle" | "success" | "error"
+  >("idle");
+  const [importMessage, setImportMessage] = useState("");
+
+  const handleExport = () => {
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      version: "1.0",
+      data: {
+        users,
+        stages,
+        leads,
+        notes,
+        followUps,
+        dayLogs,
+        fvrs,
+        saleOrders,
+        orderIdRequests,
+        approvalLogs,
+      },
+    };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const dateStr = new Date()
+      .toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+      .replace(/\//g, "-");
+    a.href = url;
+    a.download = `LeadManager_Export_${dateStr}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success("Data exported successfully");
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith(".json")) {
+      setImportStatus("error");
+      setImportMessage("Please upload a valid .json file");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string);
+        if (!parsed.data) throw new Error("Invalid file format");
+        const d = parsed.data;
+        // Import each collection into localStorage directly
+        if (d.users) {
+          localStorage.setItem(LS_USERS, JSON.stringify(d.users));
+        }
+        if (d.stages) {
+          localStorage.setItem(LS_STAGES, JSON.stringify(d.stages));
+        }
+        if (d.leads) {
+          localStorage.setItem(LS_LEADS, JSON.stringify(d.leads));
+        }
+        if (d.notes) {
+          localStorage.setItem(LS_NOTES, JSON.stringify(d.notes));
+        }
+        if (d.followUps) {
+          localStorage.setItem(LS_FOLLOWUPS, JSON.stringify(d.followUps));
+        }
+        if (d.dayLogs) {
+          localStorage.setItem(LS_DAYLOGS, JSON.stringify(d.dayLogs));
+        }
+        if (d.fvrs) {
+          localStorage.setItem(LS_FVRS, JSON.stringify(d.fvrs));
+        }
+        if (d.saleOrders) {
+          localStorage.setItem(LS_SALE_ORDERS, JSON.stringify(d.saleOrders));
+        }
+        if (d.orderIdRequests) {
+          localStorage.setItem(
+            LS_ORDER_ID_REQUESTS,
+            JSON.stringify(d.orderIdRequests),
+          );
+        }
+        if (d.approvalLogs) {
+          localStorage.setItem(
+            LS_APPROVAL_LOGS,
+            JSON.stringify(d.approvalLogs),
+          );
+        }
+        setImportStatus("success");
+        setImportMessage(
+          `Import successful! ${d.leads?.length ?? 0} leads, ${d.users?.length ?? 0} users, ${d.notes?.length ?? 0} notes imported. Reload the page to see all data.`,
+        );
+        toast.success("Data imported — reload the page to apply changes");
+      } catch {
+        setImportStatus("error");
+        setImportMessage(
+          "Import failed: the file appears to be corrupted or invalid.",
+        );
+      }
+    };
+    reader.readAsText(file);
+    // Reset input so same file can be re-selected
+    e.target.value = "";
+  };
 
   // Day Reports state
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -381,6 +514,14 @@ export function AdminDashboard() {
           >
             <History className="w-3.5 h-3.5" />
             Approval Log
+          </TabsTrigger>
+          <TabsTrigger
+            value="importexport"
+            className="flex items-center gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            data-ocid="admin.tabs.importexport.tab"
+          >
+            <FileJson className="w-3.5 h-3.5" />
+            Import / Export
           </TabsTrigger>
         </TabsList>
 
@@ -1236,6 +1377,186 @@ export function AdminDashboard() {
               })}
             </div>
           )}
+        </TabsContent>
+
+        {/* ── Import / Export Tab ── */}
+        <TabsContent value="importexport">
+          <div className="mb-6">
+            <h2 className="font-display text-base font-semibold text-foreground">
+              Import / Export Data
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Export all your data as a JSON file, or import a previously
+              exported file to migrate data.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Export Card */}
+            <Card className="bg-card border-border shadow-card">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                    <Download className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <CardTitle className="font-display text-base">
+                      Export Data
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Download a full backup of all records
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg bg-secondary/40 border border-border p-3 space-y-1.5">
+                  <p className="text-xs font-medium text-foreground">
+                    Includes:
+                  </p>
+                  {[
+                    `${leads.length} Leads`,
+                    `${users.length} Users`,
+                    `${notes.length} Notes`,
+                    `${followUps.length} Follow-ups`,
+                    `${dayLogs.length} Day Logs`,
+                    `${fvrs.length} First Visit Reports`,
+                    `${saleOrders.length} Sale Orders`,
+                    `${orderIdRequests.length} Order ID Requests`,
+                    `${approvalLogs.length} Approval Logs`,
+                    `${stages.length} Pipeline Stages`,
+                  ].map((item) => (
+                    <div
+                      key={item}
+                      className="flex items-center gap-2 text-xs text-muted-foreground"
+                    >
+                      <CheckCircle className="w-3 h-3 text-emerald-400 shrink-0" />
+                      {item}
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                  onClick={handleExport}
+                  data-ocid="admin.importexport.export_button"
+                >
+                  <Download className="w-4 h-4" />
+                  Download JSON Export
+                </Button>
+                <p className="text-[11px] text-muted-foreground text-center">
+                  File name: LeadManager_Export_
+                  {new Date()
+                    .toLocaleDateString("en-IN", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                    })
+                    .replace(/\//g, "-")}
+                  .json
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Import Card */}
+            <Card className="bg-card border-border shadow-card">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Upload className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <CardTitle className="font-display text-base">
+                      Import Data
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Restore from a previously exported JSON file
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg bg-amber-500/8 border border-amber-500/20 p-3">
+                  <p className="text-xs text-amber-300 font-medium mb-1">
+                    Important
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Importing will overwrite all existing data. Make sure to
+                    export a backup first. After import, reload the page to
+                    apply all changes.
+                  </p>
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  className="hidden"
+                  onChange={handleImportFile}
+                  data-ocid="admin.importexport.file_input"
+                />
+
+                <Button
+                  variant="outline"
+                  className="w-full border-primary/40 text-primary hover:bg-primary/10 gap-2"
+                  onClick={() => {
+                    setImportStatus("idle");
+                    setImportMessage("");
+                    fileInputRef.current?.click();
+                  }}
+                  data-ocid="admin.importexport.import_button"
+                >
+                  <Upload className="w-4 h-4" />
+                  Choose JSON File to Import
+                </Button>
+
+                {importStatus === "success" && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    data-ocid="admin.importexport.success_state"
+                    className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 flex items-start gap-2"
+                  >
+                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-medium text-emerald-300">
+                        Import Successful
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {importMessage}
+                      </p>
+                      <Button
+                        size="sm"
+                        className="mt-2 h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                        onClick={() => window.location.reload()}
+                        data-ocid="admin.importexport.reload_button"
+                      >
+                        Reload Now
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
+
+                {importStatus === "error" && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    data-ocid="admin.importexport.error_state"
+                    className="rounded-lg bg-rose-500/10 border border-rose-500/30 p-3 flex items-start gap-2"
+                  >
+                    <XCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-medium text-rose-300">
+                        Import Failed
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {importMessage}
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
